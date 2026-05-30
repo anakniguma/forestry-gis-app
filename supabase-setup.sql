@@ -333,6 +333,12 @@ CREATE POLICY "Users can view audit logs for their trees"
     ON public.tree_audit_log FOR SELECT
     USING (auth.uid() = user_id);
 
+-- Allow authenticated users to insert their own audit log rows
+-- (Also covered by SECURITY DEFINER on the trigger function below)
+CREATE POLICY "Users can insert audit logs for their trees"
+    ON public.tree_audit_log FOR INSERT
+    WITH CHECK (auth.uid() = user_id);
+
 -- Trigger function to auto-log changes
 CREATE OR REPLACE FUNCTION log_tree_changes()
 RETURNS TRIGGER AS $$
@@ -362,7 +368,11 @@ BEGIN
     END IF;
     RETURN NULL;
 END;
-$$ LANGUAGE plpgsql;
+-- SECURITY DEFINER lets this trigger function bypass RLS on tree_audit_log.
+-- Without it, the trigger runs as the calling user and is blocked because
+-- there is no INSERT policy granting the trigger itself write access.
+$$ LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public;
 
 CREATE TRIGGER tree_audit_trigger
     AFTER INSERT OR UPDATE OR DELETE ON public.trees

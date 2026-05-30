@@ -1269,6 +1269,9 @@ body {
     z-index: 1001;
     padding: 24px;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch; /* momentum scroll on iOS */
+    touch-action: pan-y;              /* let the panel own vertical touch scroll */
+    overscroll-behavior: contain;     /* prevent scroll bleeding through to the map */
     transform: translateX(-100%);
     transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
     scrollbar-width: thin;
@@ -2015,6 +2018,8 @@ body {
     #dashboard-panel {
         width: 100%;
         max-width: 320px;
+        height: 100vh;    /* ensure full viewport height so overflow-y can scroll */
+        max-height: 100vh;
     }
 
     #toast-container {
