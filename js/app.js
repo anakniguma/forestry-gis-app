@@ -1262,31 +1262,59 @@ function closeQRModal() {
 // ========================================
 // Deep Link Handler (?tree=ID)
 // ========================================
-function handleDeepLink() {
+async function handleDeepLink() {
     const params = new URLSearchParams(window.location.search);
     const treeId = parseInt(params.get('tree'), 10);
     if (!treeId) return;
 
-    const item = state.allTreeMarkers.find(m => m.tree.id === treeId);
+    let item = state.allTreeMarkers.find(m => m.tree.id == treeId);
+    
     if (!item) {
-        showToast(`Tree #${treeId} not found`, 'warning');
-        return;
+        showLoading('Loading tree details...');
+        try {
+            const { data: tree, error } = await supabase
+                .from('trees')
+                .select('*')
+                .eq('id', treeId)
+                .single();
+
+            if (error || !tree) {
+                showToast(`Tree #${treeId} not found or access restricted`, 'warning');
+                return;
+            }
+
+            // Tree exists and is accessible! Let's add it to the map dynamically
+            addTreeToMap(tree);
+            item = state.allTreeMarkers.find(m => m.tree.id == treeId);
+            
+            // Update UI dashboard & species list
+            updateSpeciesFilter();
+            updateDashboard();
+            if (state.heatLayer) updateHeatmap(state.heatLayer, state.allTreeMarkers.map(m => m.tree));
+
+        } catch (err) {
+            console.error('Error fetching deep-linked tree:', err);
+            showToast(`Tree #${treeId} could not be loaded`, 'error');
+            return;
+        } finally {
+            hideLoading();
+        }
     }
 
-    const { marker, tree } = item;
-    // Fly to tree and open its popup
-    state.map.flyTo([tree.latitude, tree.longitude], 17, { animate: true, duration: 1.2 });
-    setTimeout(() => {
-        // Ensure the marker is visible in the cluster group before opening
-        if (state.markerClusterGroup) {
-            state.markerClusterGroup.zoomToShowLayer(marker, () => marker.openPopup());
-        } else {
-            marker.openPopup();
-        }
-        showToast(`📍 Showing Tree #${treeId} — ${tree.species || 'Unknown'}`, 'info', 3000);
-    }, 1400);
+    if (item) {
+        const { marker, tree } = item;
+        state.map.flyTo([tree.latitude, tree.longitude], 17, { animate: true, duration: 1.2 });
+        setTimeout(() => {
+            if (state.markerClusterGroup) {
+                state.markerClusterGroup.zoomToShowLayer(marker, () => marker.openPopup());
+            } else {
+                marker.openPopup();
+            }
+            showToast(`📍 Showing Tree #${treeId} — ${tree.species || 'Unknown'}`, 'info', 3000);
+        }, 1400);
+    }
 
-    // Clean the URL without reloading
+    // Clean URL without reload
     const cleanUrl = window.location.pathname;
     window.history.replaceState({}, '', cleanUrl);
 }
