@@ -3,7 +3,7 @@
 // Enhanced: Cache limits (#38), Background Sync (#25)
 // ========================================
 
-const CACHE_NAME = 'forestry-mapper-v6';
+const CACHE_NAME = 'forestry-mapper-v7';
 const TILE_CACHE = 'map-tiles-v2';
 const MAX_TILE_CACHE_ITEMS = 500; // LRU eviction (#38)
 
@@ -28,7 +28,8 @@ const PRECACHE_URLS = [
     'https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js',
     'https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js',
     'https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js',
-    'https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js'
+    'https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'
 ];
 
 // --- Install ---
