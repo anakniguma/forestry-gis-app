@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#2d6a2e">
+    <meta name="description"
+        content="Forestry Tree Mapper – map trees, draw sample plots, upload photos, analyze forestry data, and work offline.">
+    <title>Forestry Tree Mapper</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+
+    <!-- App Styles -->
+    <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+
+    <!-- ==================== Auth Screen ==================== -->
+    <div id="auth-screen">
+        <div class="auth-bg-pattern"></div>
+        <div class="auth-container">
+            <div class="auth-card">
+                <div class="auth-logo">
+                    <span class="auth-logo-icon">🌳</span>
+                    <h1>Forestry Tree Mapper</h1>
+                    <p>Map, measure, and manage your forest inventory</p>
+                </div>
+
+                <div class="auth-tabs">
+                    <button class="auth-tab active" id="tab-login" type="button">Sign In</button>
+                    <button class="auth-tab" id="tab-signup" type="button">Create Account</button>
+                </div>
+
+                <form id="login-form" class="auth-form active">
+                    <div class="auth-field">
+                        <label for="login-email">Email</label>
+                        <input id="login-email" type="email" placeholder="you@example.com" required
+                            autocomplete="email" />
+                    </div>
+                    <div class="auth-field">
+                        <label for="login-password">Password</label>
+                        <input id="login-password" type="password" placeholder="Your password" required
+                            autocomplete="current-password" />
+                    </div>
+                    <button type="submit" class="auth-submit" id="login-submit">Sign In</button>
+                    <div class="auth-error" id="login-error"></div>
+                </form>
+
+                <form id="signup-form" class="auth-form">
+                    <div class="auth-field">
+                        <label for="signup-email">Email</label>
+                        <input id="signup-email" type="email" placeholder="you@example.com" required
+                            autocomplete="email" />
+                    </div>
+                    <div class="auth-field">
+                        <label for="signup-password">Password</label>
+                        <input id="signup-password" type="password" placeholder="Minimum 6 characters" required
+                            minlength="6" autocomplete="new-password" />
+                    </div>
+                    <div class="auth-field">
+                        <label for="signup-confirm">Confirm Password</label>
+                        <input id="signup-confirm" type="password" placeholder="Re-enter password" required
+                            minlength="6" autocomplete="new-password" />
+                    </div>
+                    <button type="submit" class="auth-submit" id="signup-submit">Create Account</button>
+                    <div class="auth-error" id="signup-error"></div>
+                    <div class="auth-success" id="signup-success"></div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== Main App ==================== -->
+    <div id="app-container">
+        <div id="map"></div>
+        <div id="panel-backdrop"></div>
+
+        <!-- Top Controls: Search + Avatar + Filters -->
+        <div id="top-controls-container">
+            <div id="search-bar-row">
+                <div id="search-wrapper">
+                    <span class="search-icon">🔍</span>
+                    <input id="search-input" type="text" placeholder="Search for a place..." autocomplete="off" />
+                    <button id="search-btn" title="Search">Search</button>
+                </div>
+
+                <button id="user-profile-btn" class="avatar-btn" type="button" title="User Profile">
+                    <span id="user-avatar-char">U</span>
+                </button>
+
+                <div id="user-dropdown" class="user-dropdown-card">
+                    <div class="user-info">
+                        <div class="user-avatar-large"><span id="user-avatar-char-large">U</span></div>
+                        <div class="user-details">
+                            <span class="user-title">Active User</span>
+                            <span id="user-dropdown-email" class="user-email">email@example.com</span>
+                        </div>
+                    </div>
+                    <div class="dropdown-divider"></div>
+                    <button id="logout-btn" class="dropdown-logout-btn" type="button">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                            <polyline points="16 17 21 12 16 7"></polyline>
+                            <line x1="21" y1="12" x2="9" y2="12"></line>
+                        </svg>
+                        Sign Out
+                    </button>
+                </div>
+            </div>
+
+            <div id="filter-bar">
+                <div class="filter-pill-wrapper">
+                    <select id="filter-species" class="filter-select-pill">
+                        <option value="">All Species</option>
+                    </select>
+                </div>
+                <div class="filter-pill-wrapper">
+                    <select id="filter-health" class="filter-select-pill">
+                        <option value="">All Health</option>
+                        <option value="Healthy">🟢 Healthy</option>
+                        <option value="Diseased">🟡 Diseased</option>
+                        <option value="Dead">🔴 Dead</option>
+                    </select>
+                </div>
+                <button id="clear-filters" type="button">✕ Clear</button>
+            </div>
+
+            <div id="search-results"></div>
+        </div>
+
+        <!-- New Tree Form Panel -->
+        <div id="form-panel" class="panel">
+            <div class="bottom-sheet-handle"></div>
+            <h3>🌳 New Tree</h3>
+            <label>Species
+                <input id="species" type="text" placeholder="e.g. Narra, Pine, Mahogany" maxlength="100" />
+            </label>
+            <label>DBH (cm)
+                <input id="dbh" type="number" step="0.1" min="0" max="500" placeholder="e.g. 32.5" />
+                <span class="field-hint">Diameter at breast height (0–500 cm)</span>
+            </label>
+            <label>Height (m)
+                <input id="height" type="number" step="0.1" min="0" max="150" placeholder="e.g. 15.2" />
+                <span class="field-hint">Total height (0–150 m)</span>
+            </label>
+            <label>Health Status
+                <select id="health">
+                    <option>Healthy</option>
+                    <option>Diseased</option>
+                    <option>Dead</option>
+                </select>
+            </label>
+            <label>Photo
+                <div class="file-input-wrapper">
+                    <div class="file-input-label" id="file-label">📷 Tap to attach photo</div>
+                    <input id="photo" type="file" accept="image/*" capture="environment" />
+                </div>
+            </label>
+            <div id="photo-preview"><img id="photo-preview-img" src="" alt="preview" /></div>
+            <label>Notes
+                <textarea id="notes" rows="2" placeholder="Optional observations..."></textarea>
+            </label>
+            <div class="btn-row">
+                <button id="save-btn" class="btn btn-primary">Save Tree</button>
+                <button id="cancel-btn" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+
+        <!-- New Plot Form Panel -->
+        <div id="plot-form-panel" class="panel">
+            <div class="bottom-sheet-handle"></div>
+            <h3>📐 New Sample Plot</h3>
+            <label>Plot Name
+                <input id="plot-name" type="text" placeholder="e.g. Plot A-1" />
+            </label>
+            <label>Notes
+                <textarea id="plot-notes" rows="2" placeholder="Optional notes..."></textarea>
+            </label>
+            <div class="btn-row">
+                <button id="save-plot-btn" class="btn btn-primary">Save Plot</button>
+                <button id="cancel-plot-btn" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Edit Tree Panel (#15) -->
+        <div id="edit-panel" class="panel">
+            <div class="bottom-sheet-handle"></div>
+            <h3>✏️ Edit Tree</h3>
+            <label>Species
+                <input id="edit-species" type="text" placeholder="e.g. Narra, Pine, Mahogany" maxlength="100" />
+            </label>
+            <label>DBH (cm)
+                <input id="edit-dbh" type="number" step="0.1" min="0" max="500" placeholder="e.g. 32.5" />
+            </label>
+            <label>Height (m)
+                <input id="edit-height" type="number" step="0.1" min="0" max="150" placeholder="e.g. 15.2" />
+            </label>
+            <label>Health Status
+                <select id="edit-health">
+                    <option>Healthy</option>
+                    <option>Diseased</option>
+                    <option>Dead</option>
+                </select>
+            </label>
+            <label>Update Photo
+                <div class="file-input-wrapper">
+                    <div class="file-input-label" id="edit-file-label">📷 Tap to change photo</div>
+                    <input id="edit-photo" type="file" accept="image/*" capture="environment" />
+                </div>
+            </label>
+            <label>Notes
+                <textarea id="edit-notes" rows="2" placeholder="Optional observations..."></textarea>
+            </label>
+            <div class="btn-row">
+                <button id="save-edit-btn" class="btn btn-primary">Update Tree</button>
+                <button id="cancel-edit-btn" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Export Panel (#12) -->
+        <div id="export-panel" class="panel">
+            <div class="bottom-sheet-handle"></div>
+            <h3>📤 Export Data</h3>
+            <p style="font-size: 13px; color: #a0b8a0; margin-bottom: 16px;">
+                Download your tree inventory and plot data.
+            </p>
+            <div class="export-format-grid">
+                <div class="format-card" data-format="csv">
+                    <span class="format-icon">📊</span>
+                    <span class="format-name">CSV</span>
+                </div>
+                <div class="format-card" data-format="geojson">
+                    <span class="format-icon">🗺️</span>
+                    <span class="format-name">GeoJSON</span>
+                </div>
+                <div class="format-card" data-format="kml">
+                    <span class="format-icon">🌐</span>
+                    <span class="format-name">KML</span>
+                </div>
+            </div>
+            <div class="btn-row">
+                <button id="cancel-export-btn" class="btn btn-secondary" style="flex:1">Close</button>
+            </div>
+        </div>
+
+        <!-- Import Panel (#16) -->
+        <div id="import-panel" class="panel">
+            <div class="bottom-sheet-handle"></div>
+            <h3>📥 Import Trees (CSV)</h3>
+            <p style="font-size: 12px; color: #7a9a7a; margin-bottom: 12px;">
+                Upload a CSV with columns: latitude, longitude, species, dbh, height, health, notes
+            </p>
+            <label>Select CSV File
+                <div class="file-input-wrapper">
+                    <div class="file-input-label" id="import-file-label">📄 Choose CSV file</div>
+                    <input id="import-file" type="file" accept=".csv,text/csv" />
+                </div>
+            </label>
+            <div id="import-stats" class="import-stats" style="display:none"></div>
+            <div id="import-errors" class="import-errors" style="display:none"></div>
+            <div id="import-preview"></div>
+            <div class="btn-row">
+                <button id="confirm-import-btn" class="btn btn-primary" disabled>Import Trees</button>
+                <button id="cancel-import-btn" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Dashboard Sidebar (#5) -->
+        <button id="dashboard-toggle" title="Dashboard">📊</button>
+        <div id="dashboard-panel">
+            <div class="dashboard-header">
+                <h2>📊 Dashboard</h2>
+                <button class="dashboard-close" id="dashboard-close">✕</button>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <span class="stat-value" id="stat-total-trees">0</span>
+                    <span class="stat-label">Trees</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value" id="stat-total-species">0</span>
+                    <span class="stat-label">Species</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value" id="stat-total-plots">0</span>
+                    <span class="stat-label">Plots</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value" id="stat-total-ba">0 m²</span>
+                    <span class="stat-label">Total Basal Area</span>
+                </div>
+            </div>
+
+            <div class="dashboard-section">
+                <h3>Species Distribution</h3>
+                <div class="chart-container">
+                    <canvas id="species-chart" height="180"></canvas>
+                </div>
+            </div>
+
+            <div class="dashboard-section">
+                <h3>Health Status</h3>
+                <div class="chart-container">
+                    <canvas id="health-chart" height="150"></canvas>
+                </div>
+            </div>
+
+            <div class="dashboard-section">
+                <h3>Trees per Plot</h3>
+                <div class="stats-grid" id="plot-tree-counts"></div>
+            </div>
+
+            <div class="dashboard-actions">
+                <button class="dashboard-action-btn" id="btn-export">
+                    <span class="action-icon">📤</span> Export Data
+                </button>
+                <button class="dashboard-action-btn" id="btn-import">
+                    <span class="action-icon">📥</span> Import CSV
+                </button>
+            </div>
+        </div>
+
+        <!-- Floating Action Buttons -->
+        <div class="map-fab-group">
+            <button class="map-fab" id="heatmap-toggle" title="Toggle Heatmap">
+                🔥
+                <span class="fab-tooltip">Heatmap</span>
+            </button>
+        </div>
+
+        <!-- GPS Button (#6) -->
+        <button id="gps-btn" title="My Location">📍</button>
+
+        <!-- Status Indicators -->
+        <div id="status-indicator">
+            <span class="status-dot"></span>
+            <span id="status-text"></span>
+        </div>
+        <div id="queue-badge" class="queue-badge"></div>
+    </div>
+
+    <!-- ==================== Overlays ==================== -->
+
+    <!-- Toast Container (#3) -->
+    <div id="toast-container"></div>
+
+    <!-- Loading Overlay (#9) -->
+    <div id="loading-overlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Loading...</div>
+    </div>
+
+    <!-- Confirmation Modal (#11) -->
+    <div id="confirm-modal">
+        <div class="confirm-card">
+            <h3>Confirm Action</h3>
+            <p>Are you sure?</p>
+            <div class="confirm-actions">
+                <button id="confirm-yes" class="btn btn-danger">Delete</button>
+                <button id="confirm-no" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lightbox (#17) -->
+    <div id="lightbox">
+        <button id="lightbox-close">✕</button>
+        <img src="" alt="Full size photo" />
+    </div>
+
+    <!-- Install Banner (#24) -->
+    <div id="install-banner">
+        <span class="install-icon">🌳</span>
+        <div class="install-text">
+            <strong>Install Tree Mapper</strong>
+            <small>Add to home screen for offline access</small>
+        </div>
+        <div class="install-actions">
+            <button class="install-btn install-accept" id="install-accept">Install</button>
+            <button class="install-btn install-dismiss" id="install-dismiss">Later</button>
+        </div>
+    </div>
+
+    <!-- ==================== Scripts ==================== -->
+
+    <!-- Leaflet Core -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+
+    <!-- Leaflet Plugins -->
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+
+    <!-- App Entry Point -->
+    <script type="module" src="js/app.js"></script>
+
+</body>
+
+</html>
