@@ -180,6 +180,9 @@ export function createTreeMarker(tree, callbacks = {}) {
                 <button class="popup-edit-btn" onclick="window.dispatchEvent(new CustomEvent('edit-tree', {detail:${tree.id}}))">✏️ Edit</button>
                 <button class="popup-delete-btn" onclick="window.dispatchEvent(new CustomEvent('delete-tree', {detail:${tree.id}}))">🗑️ Delete</button>
             </div>
+            <div class="popup-actions" style="margin-top:4px">
+                <button class="popup-qr-btn" onclick="window.dispatchEvent(new CustomEvent('qr-tree', {detail:${tree.id}}))">🏷️ QR Tag</button>
+            </div>
         </div>
     `;
 

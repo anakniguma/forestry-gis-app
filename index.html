@@ -384,6 +384,42 @@
         <img src="" alt="Full size photo" />
     </div>
 
+    <!-- QR Tag Modal -->
+    <div id="qr-modal">
+        <div class="qr-modal-card">
+            <div class="qr-modal-header">
+                <h3>🏷️ Tree QR Tag</h3>
+                <button class="qr-modal-close" id="qr-modal-close">✕</button>
+            </div>
+
+            <!-- Printable tag area -->
+            <div class="qr-tag-printable" id="qr-tag-printable">
+                <div class="qr-tag-top">
+                    <span class="qr-tag-icon">🌳</span>
+                    <div class="qr-tag-title-block">
+                        <div class="qr-tag-label">TREE TAG</div>
+                        <div class="qr-tag-id" id="qr-tag-id">#—</div>
+                    </div>
+                </div>
+                <div class="qr-tag-info">
+                    <div class="qr-tag-row"><span>Species</span><strong id="qr-tag-species">—</strong></div>
+                    <div class="qr-tag-row"><span>Health</span><strong id="qr-tag-health">—</strong></div>
+                    <div class="qr-tag-row"><span>DBH</span><strong id="qr-tag-dbh">—</strong></div>
+                    <div class="qr-tag-row"><span>Height</span><strong id="qr-tag-height">—</strong></div>
+                </div>
+                <div class="qr-code-wrapper">
+                    <div id="qr-code-canvas"></div>
+                </div>
+                <div class="qr-tag-footer">Scan to open tree record</div>
+            </div>
+
+            <div class="qr-modal-actions">
+                <button class="btn btn-primary" id="qr-print-btn">🖨️ Print Tag</button>
+                <button class="btn btn-secondary" id="qr-modal-cancel">Close</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Install Banner (#24) -->
     <div id="install-banner">
         <span class="install-icon">🌳</span>
@@ -409,6 +445,9 @@
 
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+
+    <!-- QRCode.js -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 
     <!-- App Entry Point -->
     <script type="module" src="js/app.js"></script>

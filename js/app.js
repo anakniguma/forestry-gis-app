@@ -312,6 +312,12 @@ async function initApp() {
     window.addEventListener('edit-tree', (e) => openEditForm(e.detail));
     window.addEventListener('delete-tree', (e) => confirmDeleteTree(e.detail));
 
+    // QR Tag event from popups
+    window.addEventListener('qr-tree', (e) => openQRModal(e.detail));
+
+    // QR modal init
+    initQRModal();
+
     // Swipe to dismiss (#21)
     initSwipeDismiss();
 
@@ -347,6 +353,9 @@ async function initApp() {
 
     updateQueueBadge();
     await reloadData();
+
+    // Deep-link: open tree from URL ?tree=ID
+    handleDeepLink();
 }
 
 // ========================================
@@ -1035,4 +1044,88 @@ function initPanelBackdrop() {
             closePanel(exportPanel);
         }
     });
+}
+
+// ========================================
+// QR Tag Modal
+// ========================================
+function initQRModal() {
+    document.getElementById('qr-modal-close')?.addEventListener('click', closeQRModal);
+    document.getElementById('qr-modal-cancel')?.addEventListener('click', closeQRModal);
+    document.getElementById('qr-modal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'qr-modal') closeQRModal();
+    });
+    document.getElementById('qr-print-btn')?.addEventListener('click', () => {
+        window.print();
+    });
+}
+
+function openQRModal(treeId) {
+    const item = state.allTreeMarkers.find(m => m.tree.id === treeId);
+    if (!item) return;
+    const tree = item.tree;
+
+    // Build the deep-link URL
+    const url = `${location.origin}${location.pathname}?tree=${tree.id}`;
+
+    // Populate tag fields
+    document.getElementById('qr-tag-id').textContent   = `#${tree.id}`;
+    document.getElementById('qr-tag-species').textContent = tree.species || 'Unknown';
+    document.getElementById('qr-tag-health').textContent  = tree.health  || 'Healthy';
+    document.getElementById('qr-tag-dbh').textContent     = `${tree.dbh || 0} cm`;
+    document.getElementById('qr-tag-height').textContent  = `${tree.height || 0} m`;
+
+    // Clear previous QR and generate new one
+    const canvas = document.getElementById('qr-code-canvas');
+    canvas.innerHTML = '';
+    // eslint-disable-next-line no-undef
+    new QRCode(canvas, {
+        text: url,
+        width: 160,
+        height: 160,
+        colorDark: '#1a3a1a',
+        colorLight: '#f0f8f0',
+        correctLevel: QRCode.CorrectLevel.H
+    });
+
+    // Close any open map popup
+    state.map?.closePopup();
+
+    document.getElementById('qr-modal').classList.add('active');
+}
+
+function closeQRModal() {
+    document.getElementById('qr-modal').classList.remove('active');
+}
+
+// ========================================
+// Deep Link Handler (?tree=ID)
+// ========================================
+function handleDeepLink() {
+    const params = new URLSearchParams(window.location.search);
+    const treeId = parseInt(params.get('tree'), 10);
+    if (!treeId) return;
+
+    const item = state.allTreeMarkers.find(m => m.tree.id === treeId);
+    if (!item) {
+        showToast(`Tree #${treeId} not found`, 'warning');
+        return;
+    }
+
+    const { marker, tree } = item;
+    // Fly to tree and open its popup
+    state.map.flyTo([tree.latitude, tree.longitude], 17, { animate: true, duration: 1.2 });
+    setTimeout(() => {
+        // Ensure the marker is visible in the cluster group before opening
+        if (state.markerClusterGroup) {
+            state.markerClusterGroup.zoomToShowLayer(marker, () => marker.openPopup());
+        } else {
+            marker.openPopup();
+        }
+        showToast(`📍 Showing Tree #${treeId} — ${tree.species || 'Unknown'}`, 'info', 3000);
+    }, 1400);
+
+    // Clean the URL without reloading
+    const cleanUrl = window.location.pathname;
+    window.history.replaceState({}, '', cleanUrl);
 }

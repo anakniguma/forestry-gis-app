@@ -2153,3 +2153,227 @@ body {
     vertical-align: middle;
     margin-right: 6px;
 }
+
+/* ========================================
+   27. QR Tag Modal
+   ======================================== */
+#qr-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    padding: 16px;
+}
+
+#qr-modal.active {
+    display: flex;
+    animation: fadeIn 0.2s ease;
+}
+
+.qr-modal-card {
+    background: rgba(12, 22, 12, 0.98);
+    border: 1px solid rgba(45, 106, 46, 0.4);
+    border-radius: 20px;
+    padding: 24px;
+    width: 100%;
+    max-width: 340px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7);
+    animation: modalSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.qr-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.qr-modal-header h3 {
+    font-size: 16px;
+    font-weight: 700;
+    color: #7ddf7e;
+}
+
+.qr-modal-close {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.05);
+    color: #a0b8a0;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.qr-modal-close:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #e0e8e0;
+}
+
+/* ---- Printable Tag Card ---- */
+.qr-tag-printable {
+    background: #f0f8f0;
+    border: 2px solid #2d6a2e;
+    border-radius: 14px;
+    padding: 18px;
+    text-align: center;
+    color: #0f1a0f;
+    margin-bottom: 18px;
+}
+
+.qr-tag-top {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(45, 106, 46, 0.3);
+    text-align: left;
+}
+
+.qr-tag-icon {
+    font-size: 32px;
+    line-height: 1;
+}
+
+.qr-tag-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: #4a8a4b;
+    text-transform: uppercase;
+}
+
+.qr-tag-id {
+    font-size: 22px;
+    font-weight: 800;
+    color: #1a3a1a;
+    line-height: 1.1;
+}
+
+.qr-tag-info {
+    margin-bottom: 14px;
+    text-align: left;
+}
+
+.qr-tag-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(45, 106, 46, 0.12);
+    font-size: 12px;
+}
+
+.qr-tag-row:last-child {
+    border-bottom: none;
+}
+
+.qr-tag-row span {
+    color: #4a6a4a;
+    font-weight: 500;
+}
+
+.qr-tag-row strong {
+    color: #1a3a1a;
+    font-weight: 700;
+}
+
+.qr-code-wrapper {
+    display: flex;
+    justify-content: center;
+    margin: 14px 0 10px;
+}
+
+.qr-code-wrapper img,
+.qr-code-wrapper canvas {
+    border-radius: 8px;
+    border: 3px solid #2d6a2e;
+}
+
+.qr-tag-footer {
+    font-size: 10px;
+    color: #4a8a4b;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    margin-top: 8px;
+}
+
+.qr-modal-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.qr-modal-actions .btn {
+    flex: 1;
+}
+
+/* QR button in tree popup */
+.popup-qr-btn {
+    flex: 1;
+    padding: 6px 10px;
+    border: 1px solid rgba(125, 223, 126, 0.3) !important;
+    border-radius: 6px;
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: rgba(45, 106, 46, 0.12);
+    color: #7ddf7e;
+    width: 100%;
+}
+
+.popup-qr-btn:hover {
+    background: rgba(45, 106, 46, 0.25);
+}
+
+/* ========================================
+   28. Print Styles (QR Tag only)
+   ======================================== */
+@media print {
+    /* Hide everything */
+    body > *:not(#qr-modal) {
+        display: none !important;
+    }
+
+    #qr-modal {
+        display: block !important;
+        position: static !important;
+        background: none !important;
+        padding: 0 !important;
+    }
+
+    .qr-modal-card {
+        background: white !important;
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        max-width: 100% !important;
+    }
+
+    .qr-modal-header,
+    .qr-modal-actions {
+        display: none !important;
+    }
+
+    .qr-tag-printable {
+        border: 2px solid #2d6a2e !important;
+        border-radius: 14px;
+        padding: 20px;
+        max-width: 280px;
+        margin: 40px auto;
+        page-break-inside: avoid;
+    }
+}
+
