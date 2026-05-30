@@ -148,8 +148,169 @@ supabase.auth.onAuthStateChange((event, session) => {
         authScreen.classList.remove('hidden');
         appContainer.classList.remove('visible');
         clearAppState();
+        if (window.startAuthParticles) {
+            window.startAuthParticles();
+        }
     }
 });
+
+// ========================================
+// Auth Screen Visual Enhancements
+// ========================================
+
+// --- Forest Particles Animation ---
+function initAuthParticles() {
+    const canvas = document.getElementById('auth-particles-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let animationFrameId = null;
+    let particles = [];
+    const maxParticles = 50;
+
+    function resizeCanvas() {
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * window.devicePixelRatio;
+        canvas.height = rect.height * window.devicePixelRatio;
+        ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    }
+
+    function createParticles() {
+        particles = [];
+        const width = canvas.width / window.devicePixelRatio;
+        const height = canvas.height / window.devicePixelRatio;
+        for (let i = 0; i < maxParticles; i++) {
+            particles.push({
+                x: Math.random() * width,
+                y: Math.random() * height,
+                size: Math.random() * 1.8 + 0.8,
+                speedY: -(Math.random() * 0.35 + 0.12),
+                swayRange: Math.random() * 10 + 4,
+                swaySpeed: Math.random() * 0.015 + 0.005,
+                angle: Math.random() * Math.PI * 2,
+                opacity: Math.random() * 0.45 + 0.2,
+                pulseSpeed: Math.random() * 0.02 + 0.008,
+                pulseAngle: Math.random() * Math.PI * 2
+            });
+        }
+    }
+
+    function draw() {
+        if (authScreen.classList.contains('hidden')) {
+            animationFrameId = null;
+            return;
+        }
+
+        const width = canvas.width / window.devicePixelRatio;
+        const height = canvas.height / window.devicePixelRatio;
+        ctx.clearRect(0, 0, width, height);
+
+        particles.forEach(p => {
+            const currentX = p.x + Math.sin(p.angle) * p.swayRange;
+            const currentOpacity = Math.max(0.08, p.opacity + Math.sin(p.pulseAngle) * 0.12);
+
+            const grad = ctx.createRadialGradient(
+                currentX, p.y, 0,
+                currentX, p.y, p.size * 3.5
+            );
+            grad.addColorStop(0, `rgba(165, 245, 165, ${currentOpacity})`);
+            grad.addColorStop(0.3, `rgba(125, 223, 126, ${currentOpacity * 0.5})`);
+            grad.addColorStop(1, 'rgba(125, 223, 126, 0)');
+
+            ctx.beginPath();
+            ctx.fillStyle = grad;
+            ctx.arc(currentX, p.y, p.size * 3.5, 0, Math.PI * 2);
+            ctx.fill();
+
+            p.y += p.speedY;
+            p.angle += p.swaySpeed;
+            p.pulseAngle += p.pulseSpeed;
+
+            if (p.y < -15) {
+                p.y = height + 15;
+                p.x = Math.random() * width;
+                p.opacity = Math.random() * 0.45 + 0.2;
+            }
+        });
+
+        animationFrameId = requestAnimationFrame(draw);
+    }
+
+    function start() {
+        resizeCanvas();
+        createParticles();
+        if (!animationFrameId) {
+            draw();
+        }
+    }
+
+    window.addEventListener('resize', () => {
+        resizeCanvas();
+        if (particles.length === 0) createParticles();
+    });
+
+    start();
+
+    window.startAuthParticles = () => {
+        if (!animationFrameId) {
+            start();
+        }
+    };
+}
+
+// --- Interactive Password Strength Meter ---
+function initPasswordStrength() {
+    const signupPassword = document.getElementById('signup-password');
+    const segments = [
+        document.getElementById('str-seg-1'),
+        document.getElementById('str-seg-2'),
+        document.getElementById('str-seg-3')
+    ];
+
+    if (!signupPassword || !segments[0]) return;
+
+    signupPassword.addEventListener('input', () => {
+        const val = signupPassword.value;
+        let score = 0;
+
+        if (val.length >= 6) score++;
+        if (val.length >= 8) score++;
+        if (/[A-Z]/.test(val) && /[a-z]/.test(val)) score++;
+        if (/[0-9]/.test(val)) score++;
+        if (/[^A-Za-z0-9]/.test(val)) score++;
+
+        let level = 0; // 0 = none, 1 = weak, 2 = medium, 3 = strong
+        if (val.length > 0) {
+            if (score <= 2) {
+                level = 1;
+            } else if (score <= 4) {
+                level = 2;
+            } else {
+                level = 3;
+            }
+        }
+
+        // Clear existing strength classes
+        segments.forEach(seg => {
+            seg.className = 'auth-strength-segment';
+        });
+
+        // Set strength color classes dynamically
+        if (level === 1) {
+            segments[0].classList.add('weak');
+        } else if (level === 2) {
+            segments[0].classList.add('medium');
+            segments[1].classList.add('medium');
+        } else if (level === 3) {
+            segments[0].classList.add('strong');
+            segments[1].classList.add('strong');
+            segments[2].classList.add('strong');
+        }
+    });
+}
+
+// Initialize Auth Screen Animations & UI interactions
+initAuthParticles();
+initPasswordStrength();
 
 // ========================================
 // App Initialization
