@@ -3,7 +3,7 @@
 // Enhanced: Cache limits (#38), Background Sync (#25)
 // ========================================
 
-const CACHE_NAME = 'forestry-mapper-v7';
+const CACHE_NAME = 'forestry-mapper-v8';
 const TILE_CACHE = 'map-tiles-v2';
 const MAX_TILE_CACHE_ITEMS = 500; // LRU eviction (#38)
 
