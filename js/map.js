@@ -41,7 +41,8 @@ export function addTileLayers(map) {
 
     const topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
         attribution: 'Map data: &copy; OpenStreetMap contributors, SRTM | Map style: &copy; OpenTopoMap (CC-BY-SA)',
-        maxZoom: 17
+        maxNativeZoom: 17,
+        maxZoom: 19
     });
 
     // Default to OSM
