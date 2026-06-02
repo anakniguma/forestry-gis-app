@@ -336,3 +336,22 @@ export function countTreesInPolygon(trees, polygonCoords) {
         pointInPolygon(t.latitude || t.lat, t.longitude || t.lng, polygonCoords)
     );
 }
+
+// --- Unique Alphanumeric Code Mapping ---
+export function treeIdToCode(id) {
+    if (!id) return 'TR-UNKNOWN';
+    const prime = 15485863;
+    const modulo = 268435456; // 2^28
+    const mixed = (Number(id) * prime) % modulo;
+    return 'TR-' + mixed.toString(36).toUpperCase().padStart(6, '0');
+}
+
+export function treeCodeToId(code) {
+    if (!code || !code.startsWith('TR-')) return null;
+    const mixPart = code.substring(3).toLowerCase();
+    const mixed = parseInt(mixPart, 36);
+    if (isNaN(mixed)) return null;
+    const inv = 44542999;
+    const modulo = 268435456;
+    return (mixed * inv) % modulo;
+}

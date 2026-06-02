@@ -6,7 +6,7 @@ import { state, HEALTH_COLORS, DEFAULT_CENTER, DEFAULT_ZOOM } from './config.js'
 import {
     sanitize, calculateBasalArea, calculateVolume, formatNumber,
     formatArea, formatPerimeter, calculatePolygonArea, calculatePolygonPerimeter,
-    countTreesInPolygon
+    countTreesInPolygon, treeIdToCode
 } from './utils.js';
 
 // --- Map Initialization ---
@@ -167,6 +167,7 @@ export function createTreeMarker(tree, callbacks = {}) {
 
     const popupContent = `
         <div>
+            <span class="popup-label">Tree Code:</span> <strong style="color: #7ddf7e; cursor: pointer; text-decoration: underline dotted;" onclick="window.copyText('${treeIdToCode(tree.id)}', 'Tree Code')">${treeIdToCode(tree.id)}</strong><br/>
             <span class="popup-label">Species:</span> ${sanitize(tree.species || 'Unknown')}<br/>
             <span class="popup-label">DBH:</span> ${sanitize(tree.dbh || 0)} cm<br/>
             <span class="popup-label">Height:</span> ${sanitize(tree.height || 0)} m<br/>

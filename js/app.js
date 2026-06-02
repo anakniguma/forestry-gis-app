@@ -3,7 +3,7 @@
 // ========================================
 
 import { supabase, state, MAX_PHOTO_SIZE, SEARCH_DEBOUNCE_MS } from './config.js';
-import { sanitize, debounce, validateTreeInput, haptic, parseCSVImport } from './utils.js';
+import { sanitize, debounce, validateTreeInput, haptic, parseCSVImport, treeIdToCode, treeCodeToId } from './utils.js';
 import {
     showToast, showLoading, hideLoading, showConfirm, initConfirmModal,
     showStatus, updateQueueBadge, openPanel, closePanel, closeAllPanels,
@@ -1250,11 +1250,13 @@ function openQRModal(treeId) {
     if (!item) return;
     const tree = item.tree;
 
+    const code = treeIdToCode(tree.id);
+
     // Build the deep-link URL
-    const url = `${location.origin}${location.pathname}?tree=${tree.id}`;
+    const url = `${location.origin}${location.pathname}?tree=${code}`;
 
     // Populate tag fields
-    document.getElementById('qr-tag-id').textContent   = `#${tree.id}`;
+    document.getElementById('qr-tag-id').textContent   = code;
     document.getElementById('qr-tag-species').textContent = tree.species || 'Unknown';
     document.getElementById('qr-tag-health').textContent  = tree.health  || 'Healthy';
     document.getElementById('qr-tag-dbh').textContent     = `${tree.dbh || 0} cm`;
@@ -1288,7 +1290,14 @@ function closeQRModal() {
 // ========================================
 async function handleDeepLink() {
     const params = new URLSearchParams(window.location.search);
-    const treeId = parseInt(params.get('tree'), 10);
+    const treeParam = params.get('tree');
+    if (!treeParam) return;
+
+    let treeId = parseInt(treeParam, 10);
+    // If tree parameter is not an integer, try decoding it as a tree code
+    if (isNaN(treeId)) {
+        treeId = treeCodeToId(treeParam);
+    }
     if (!treeId) return;
 
     let item = state.allTreeMarkers.find(m => m.tree.id == treeId);
@@ -1303,7 +1312,7 @@ async function handleDeepLink() {
                 .single();
 
             if (error || !tree) {
-                showToast(`Tree #${treeId} not found or access restricted`, 'warning');
+                showToast(`Tree ${treeParam} not found or access restricted`, 'warning');
                 return;
             }
 
@@ -1318,7 +1327,7 @@ async function handleDeepLink() {
 
         } catch (err) {
             console.error('Error fetching deep-linked tree:', err);
-            showToast(`Tree #${treeId} could not be loaded`, 'error');
+            showToast(`Tree ${treeParam} could not be loaded`, 'error');
             return;
         } finally {
             hideLoading();
@@ -1334,7 +1343,7 @@ async function handleDeepLink() {
             } else {
                 marker.openPopup();
             }
-            showToast(`📍 Showing Tree #${treeId} — ${tree.species || 'Unknown'}`, 'info', 3000);
+            showToast(`📍 Showing Tree ${treeIdToCode(treeId)} — ${tree.species || 'Unknown'}`, 'info', 3000);
         }, 1400);
     }
 
