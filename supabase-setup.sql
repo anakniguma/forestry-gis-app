@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS public.trees (
     species TEXT DEFAULT 'Unknown',
     dbh REAL DEFAULT 0,          -- Diameter at Breast Height in cm
     height REAL DEFAULT 0,       -- Total height in meters
+    elevation REAL DEFAULT 0,    -- Altitude in meters (auto-fetched)
     health TEXT DEFAULT 'Healthy' CHECK (health IN ('Healthy', 'Diseased', 'Dead')),
     latitude DOUBLE PRECISION NOT NULL,
     longitude DOUBLE PRECISION NOT NULL,
@@ -43,7 +44,8 @@ CREATE TABLE IF NOT EXISTS public.sample_plots (
 -- =========================================================================
 ALTER TABLE public.trees 
     ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now(),
-    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now(),
+    ADD COLUMN IF NOT EXISTS elevation REAL DEFAULT 0;
 
 ALTER TABLE public.sample_plots 
     ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now(),

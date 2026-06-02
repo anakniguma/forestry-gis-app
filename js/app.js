@@ -3,7 +3,7 @@
 // ========================================
 
 import { supabase, state, MAX_PHOTO_SIZE, SEARCH_DEBOUNCE_MS } from './config.js';
-import { sanitize, debounce, validateTreeInput, haptic, parseCSVImport, treeIdToCode, treeCodeToId } from './utils.js';
+import { sanitize, debounce, validateTreeInput, haptic, parseCSVImport, treeIdToCode, treeCodeToId, fetchElevation, haversineDistance } from './utils.js';
 import {
     showToast, showLoading, hideLoading, showConfirm, initConfirmModal,
     showStatus, updateQueueBadge, openPanel, closePanel, closeAllPanels,
@@ -699,6 +699,21 @@ function handleDrawCreated(e) {
         
         openPanel(formPanel);
         resetTreeForm();
+
+        // Fetch elevation
+        const elevInput = document.getElementById('elevation');
+        if (elevInput) elevInput.value = '';
+        fetchElevation(latlng.lat, latlng.lng).then(elevation => {
+            if (elevInput) elevInput.value = elevation.toFixed(1);
+        });
+    } else if (type === 'polyline') {
+        const latlngs = layer.getLatLngs();
+        let totalDistance = 0;
+        for (let i = 0; i < latlngs.length - 1; i++) {
+            totalDistance += haversineDistance(latlngs[i].lat, latlngs[i].lng, latlngs[i+1].lat, latlngs[i+1].lng);
+        }
+        const distanceStr = totalDistance > 1000 ? (totalDistance / 1000).toFixed(2) + ' km' : totalDistance.toFixed(1) + ' m';
+        layer.bindPopup(`<span class="popup-label">📏 Distance:</span> ${distanceStr}`).openPopup();
     } else if (type === 'polygon') {
         state.currentDrawType = 'polygon';
         openPanel(plotFormPanel);
@@ -802,6 +817,7 @@ function resetTreeForm() {
     document.getElementById('species').value = '';
     document.getElementById('dbh').value = '';
     document.getElementById('height').value = '';
+    document.getElementById('elevation').value = '';
     document.getElementById('health').value = 'Healthy';
     document.getElementById('notes').value = '';
     photoInput.value = '';
@@ -816,6 +832,7 @@ async function saveTree() {
     const species = document.getElementById('species').value || 'Unknown';
     const dbh = parseFloat(document.getElementById('dbh').value) || 0;
     const height = parseFloat(document.getElementById('height').value) || 0;
+    const elevation = parseFloat(document.getElementById('elevation').value) || 0;
     const health = document.getElementById('health').value;
     const notes = document.getElementById('notes').value;
 
@@ -839,7 +856,7 @@ async function saveTree() {
     }
 
     const treeData = {
-        species, dbh, height, health, notes,
+        species, dbh, height, elevation, health, notes,
         latitude: latlng.lat, longitude: latlng.lng,
         photo_url: photoUrl, user_id: state.currentUser.id
     };
@@ -920,6 +937,7 @@ function openEditForm(treeId) {
     document.getElementById('edit-species').value = tree.species || '';
     document.getElementById('edit-dbh').value = tree.dbh || '';
     document.getElementById('edit-height').value = tree.height || '';
+    document.getElementById('edit-elevation').value = tree.elevation !== undefined ? tree.elevation : '';
     document.getElementById('edit-health').value = tree.health || 'Healthy';
     document.getElementById('edit-notes').value = tree.notes || '';
 
@@ -939,6 +957,7 @@ async function saveEditTree() {
     const species = document.getElementById('edit-species').value || 'Unknown';
     const dbh = parseFloat(document.getElementById('edit-dbh').value) || 0;
     const height = parseFloat(document.getElementById('edit-height').value) || 0;
+    const elevation = parseFloat(document.getElementById('edit-elevation').value) || 0;
     const health = document.getElementById('edit-health').value;
     const notes = document.getElementById('edit-notes').value;
 
@@ -959,7 +978,7 @@ async function saveEditTree() {
         }
     }
 
-    const updateData = { species, dbh, height, health, notes };
+    const updateData = { species, dbh, height, elevation, health, notes };
     if (photoUrl !== undefined) updateData.photo_url = photoUrl;
 
     try {

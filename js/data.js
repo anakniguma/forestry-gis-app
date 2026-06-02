@@ -218,6 +218,7 @@ export async function importTreesFromCSV(csvText) {
             species: row.species,
             dbh: row.dbh,
             height: row.height,
+            elevation: row.elevation,
             health: row.health,
             notes: row.notes,
             latitude: row.latitude,

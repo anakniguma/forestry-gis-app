@@ -39,18 +39,24 @@ export function addTileLayers(map) {
         maxZoom: 19
     });
 
+    const topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+        attribution: 'Map data: &copy; OpenStreetMap contributors, SRTM | Map style: &copy; OpenTopoMap (CC-BY-SA)',
+        maxZoom: 17
+    });
+
     // Default to OSM
     osm.addTo(map);
 
     const baseLayers = {
         '🗺️ Street Map': osm,
         '🛰️ Satellite': satellite,
+        '⛰️ Topographic': topo,
         '🌑 Dark Mode': dark
     };
 
     L.control.layers(baseLayers, null, { position: 'topright' }).addTo(map);
 
-    return { osm, satellite, dark };
+    return { osm, satellite, topo, dark };
 }
 
 // --- Draw Controls ---
@@ -66,7 +72,12 @@ export function addDrawControls(map, drawnItems) {
                     fillOpacity: 0.2
                 }
             },
-            polyline: false,
+            polyline: {
+                shapeOptions: {
+                    color: '#ffcc66',
+                    weight: 3
+                }
+            },
             rectangle: false,
             circle: false,
             circlemarker: false,
@@ -171,6 +182,7 @@ export function createTreeMarker(tree, callbacks = {}) {
             <span class="popup-label">Species:</span> ${sanitize(tree.species || 'Unknown')}<br/>
             <span class="popup-label">DBH:</span> ${sanitize(tree.dbh || 0)} cm<br/>
             <span class="popup-label">Height:</span> ${sanitize(tree.height || 0)} m<br/>
+            <span class="popup-label">Elevation:</span> ${tree.elevation ? sanitize(tree.elevation) + ' m' : '—'}<br/>
             <span class="popup-label">Health:</span>
             <span class="popup-health ${healthClass}">${sanitize(health)}</span><br/>
             <span class="popup-label">Coordinates:</span>

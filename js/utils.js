@@ -45,6 +45,21 @@ export function haversineDistance(lat1, lng1, lat2, lng2) {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+// --- Elevation API (#40) ---
+export async function fetchElevation(lat, lng) {
+    try {
+        const response = await fetch(`https://api.opentopodata.org/v1/srtm90m?locations=${lat},${lng}`);
+        if (!response.ok) throw new Error('API response not ok');
+        const data = await response.json();
+        if (data.results && data.results.length > 0) {
+            return data.results[0].elevation || 0;
+        }
+    } catch (err) {
+        console.warn('Could not fetch elevation:', err);
+    }
+    return 0;
+}
+
 export function calculatePolygonArea(latlngs) {
     // Shoelace formula with haversine-based distances (approximate for small polygons)
     // Uses spherical excess for more accuracy
@@ -164,9 +179,9 @@ export function escapeCSV(val) {
 
 // --- Export Functions (#12) ---
 export function treesToCSV(trees) {
-    const headers = ['id', 'species', 'dbh_cm', 'height_m', 'health', 'latitude', 'longitude', 'basal_area_m2', 'volume_m3', 'notes', 'photo_url', 'created_at'];
+    const headers = ['id', 'species', 'dbh_cm', 'height_m', 'elevation_m', 'health', 'latitude', 'longitude', 'basal_area_m2', 'volume_m3', 'notes', 'photo_url', 'created_at'];
     const rows = trees.map(t => [
-        escapeCSV(t.id), escapeCSV(t.species), escapeCSV(t.dbh), escapeCSV(t.height),
+        escapeCSV(t.id), escapeCSV(t.species), escapeCSV(t.dbh), escapeCSV(t.height), escapeCSV(t.elevation),
         escapeCSV(t.health), escapeCSV(t.latitude), escapeCSV(t.longitude),
         escapeCSV(formatNumber(calculateBasalArea(t.dbh), 4)),
         escapeCSV(formatNumber(calculateVolume(t.dbh, t.height), 4)),
@@ -182,7 +197,7 @@ export function treesToGeoJSON(trees) {
             type: 'Feature',
             geometry: { type: 'Point', coordinates: [t.longitude, t.latitude] },
             properties: {
-                id: t.id, species: t.species, dbh: t.dbh, height: t.height,
+                id: t.id, species: t.species, dbh: t.dbh, height: t.height, elevation: t.elevation,
                 health: t.health, notes: t.notes, photo_url: t.photo_url,
                 basal_area_m2: +formatNumber(calculateBasalArea(t.dbh), 4),
                 volume_m3: +formatNumber(calculateVolume(t.dbh, t.height), 4),
@@ -267,6 +282,7 @@ export function parseCSVImport(csvText) {
         row.longitude = lng;
         row.dbh = parseFloat(row.dbh || row.dbh_cm) || 0;
         row.height = parseFloat(row.height || row.height_m) || 0;
+        row.elevation = parseFloat(row.elevation || row.elevation_m) || 0;
         row.species = row.species || 'Unknown';
         row.health = ['Healthy', 'Diseased', 'Dead'].includes(row.health) ? row.health : 'Healthy';
         row.notes = row.notes || '';
