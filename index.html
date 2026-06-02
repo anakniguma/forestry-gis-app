@@ -257,6 +257,10 @@
         <div id="form-panel" class="panel">
             <div class="bottom-sheet-handle"></div>
             <h3>🌳 New Tree</h3>
+            <div class="form-coordinates-display" onclick="window.copyText(document.getElementById('new-tree-coords').textContent)" title="Click to copy coordinates">
+                <span>📍 Location:</span>
+                <span id="new-tree-coords" class="coords-value">—</span>
+            </div>
             <label>Species
                 <input id="species" type="text" placeholder="e.g. Narra, Pine, Mahogany" maxlength="100" />
             </label>
@@ -311,6 +315,10 @@
         <div id="edit-panel" class="panel">
             <div class="bottom-sheet-handle"></div>
             <h3>✏️ Edit Tree</h3>
+            <div class="form-coordinates-display" onclick="window.copyText(document.getElementById('edit-tree-coords').textContent)" title="Click to copy coordinates">
+                <span>📍 Location:</span>
+                <span id="edit-tree-coords" class="coords-value">—</span>
+            </div>
             <label>Species
                 <input id="edit-species" type="text" placeholder="e.g. Narra, Pine, Mahogany" maxlength="100" />
             </label>

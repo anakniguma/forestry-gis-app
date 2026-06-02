@@ -312,6 +312,16 @@ function initPasswordStrength() {
 initAuthParticles();
 initPasswordStrength();
 
+// Global copy text helper
+window.copyText = function(text, label = 'Coordinates') {
+    if (!text || text === '—') return;
+    navigator.clipboard.writeText(text).then(() => {
+        showToast(`${label} copied to clipboard!`, 'success');
+    }).catch(err => {
+        console.error('Failed to copy: ', err);
+    });
+};
+
 // ========================================
 // App Initialization
 // ========================================
@@ -679,6 +689,14 @@ function handleDrawCreated(e) {
 
     if (type === 'marker') {
         state.currentDrawType = 'marker';
+        
+        // Populate coordinates for new tree display
+        const latlng = layer.getLatLng();
+        const latStr = latlng.lat.toFixed(6);
+        const lngStr = latlng.lng.toFixed(6);
+        const coordsDisplay = document.getElementById('new-tree-coords');
+        if (coordsDisplay) coordsDisplay.textContent = `${latStr}, ${lngStr}`;
+        
         openPanel(formPanel);
         resetTreeForm();
     } else if (type === 'polygon') {
@@ -904,6 +922,12 @@ function openEditForm(treeId) {
     document.getElementById('edit-height').value = tree.height || '';
     document.getElementById('edit-health').value = tree.health || 'Healthy';
     document.getElementById('edit-notes').value = tree.notes || '';
+
+    // Fill coordinates
+    const latStr = tree.latitude ? parseFloat(tree.latitude).toFixed(6) : '0.000000';
+    const lngStr = tree.longitude ? parseFloat(tree.longitude).toFixed(6) : '0.000000';
+    const coordsDisplay = document.getElementById('edit-tree-coords');
+    if (coordsDisplay) coordsDisplay.textContent = `${latStr}, ${lngStr}`;
 
     closeAllPanels();
     openPanel(editPanel);

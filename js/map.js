@@ -147,6 +147,9 @@ export function createTreeMarker(tree, callbacks = {}) {
     const ba = calculateBasalArea(tree.dbh);
     const vol = calculateVolume(tree.dbh, tree.height);
 
+    const latStr = tree.latitude ? parseFloat(tree.latitude).toFixed(6) : '0.000000';
+    const lngStr = tree.longitude ? parseFloat(tree.longitude).toFixed(6) : '0.000000';
+
     let photoHtml = '';
     if (tree.photo_url) {
         photoHtml = `<img class="popup-photo" src="${sanitize(tree.photo_url)}" alt="Tree photo"
@@ -169,6 +172,10 @@ export function createTreeMarker(tree, callbacks = {}) {
             <span class="popup-label">Height:</span> ${sanitize(tree.height || 0)} m<br/>
             <span class="popup-label">Health:</span>
             <span class="popup-health ${healthClass}">${sanitize(health)}</span><br/>
+            <span class="popup-label">Coordinates:</span>
+            <span class="popup-coords" title="Click to copy" onclick="window.copyText('${latStr}, ${lngStr}')">
+                ${latStr}, ${lngStr}
+            </span><br/>
             ${tree.notes ? '<small>' + sanitize(tree.notes) + '</small><br/>' : ''}
             <div class="popup-stats">
                 <span>📐 BA: ${formatNumber(ba, 4)} m²</span>
