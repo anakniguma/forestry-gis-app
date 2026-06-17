@@ -1,58 +1,148 @@
 -- ========================================
--- Forestry Tree Mapper — Supabase SQL Setup
+-- OpenGIS — Supabase SQL Setup
 -- Run these in your Supabase SQL Editor
 -- (Dashboard → SQL Editor → New Query)
 -- ========================================
 
 
 -- ========================================
--- 1. CORE TABLES (trees + sample_plots)
--- Skip if these already exist in your DB
+-- 1. PROJECTS TABLE
+-- Top-level map/workspace
 -- ========================================
 
--- Trees table
-CREATE TABLE IF NOT EXISTS public.trees (
+CREATE TABLE IF NOT EXISTS public.projects (
     id BIGSERIAL PRIMARY KEY,
     user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-    species TEXT DEFAULT 'Unknown',
-    dbh REAL DEFAULT 0,          -- Diameter at Breast Height in cm
-    height REAL DEFAULT 0,       -- Total height in meters
-    elevation REAL DEFAULT 0,    -- Altitude in meters (auto-fetched)
-    health TEXT DEFAULT 'Healthy' CHECK (health IN ('Healthy', 'Diseased', 'Dead')),
-    latitude DOUBLE PRECISION NOT NULL,
-    longitude DOUBLE PRECISION NOT NULL,
+    name TEXT NOT NULL DEFAULT 'Untitled Map',
+    description TEXT DEFAULT '',
+    is_public BOOLEAN DEFAULT false,
+    share_token TEXT UNIQUE,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own projects"
+    ON public.projects FOR SELECT
+    USING (auth.uid() = user_id OR is_public = true);
+
+CREATE POLICY "Users can insert their own projects"
+    ON public.projects FOR INSERT
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own projects"
+    ON public.projects FOR UPDATE
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own projects"
+    ON public.projects FOR DELETE
+    USING (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_projects_user ON public.projects(user_id);
+CREATE INDEX IF NOT EXISTS idx_projects_share_token ON public.projects(share_token);
+
+
+-- ========================================
+-- 2. LAYERS TABLE
+-- Named groups of features with styling and schema
+-- ========================================
+
+CREATE TABLE IF NOT EXISTS public.layers (
+    id BIGSERIAL PRIMARY KEY,
+    project_id BIGINT REFERENCES public.projects(id) ON DELETE CASCADE NOT NULL,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    name TEXT NOT NULL DEFAULT 'Layer',
+    color TEXT DEFAULT '#4C9AFF',
+    icon TEXT DEFAULT '📍',
+    geometry_type TEXT DEFAULT 'Point' CHECK (geometry_type IN ('Point', 'LineString', 'Polygon')),
+    schema JSONB DEFAULT '[]'::jsonb,   -- Array of {key, label, type, required, options, min, max, step}
+    visible BOOLEAN DEFAULT true,
+    order_index INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE public.layers ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view layers of their projects"
+    ON public.layers FOR SELECT
+    USING (
+        auth.uid() = user_id
+        OR project_id IN (SELECT id FROM public.projects WHERE is_public = true)
+    );
+
+CREATE POLICY "Users can insert layers"
+    ON public.layers FOR INSERT
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their layers"
+    ON public.layers FOR UPDATE
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their layers"
+    ON public.layers FOR DELETE
+    USING (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_layers_project ON public.layers(project_id);
+CREATE INDEX IF NOT EXISTS idx_layers_user ON public.layers(user_id);
+
+
+-- ========================================
+-- 3. FEATURES TABLE
+-- Individual spatial objects (points, lines, polygons)
+-- ========================================
+
+CREATE TABLE IF NOT EXISTS public.features (
+    id BIGSERIAL PRIMARY KEY,
+    layer_id BIGINT REFERENCES public.layers(id) ON DELETE CASCADE NOT NULL,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    geometry_type TEXT NOT NULL CHECK (geometry_type IN ('Point', 'LineString', 'Polygon')),
+    coordinates JSONB NOT NULL,          -- Point: {lat, lng}  |  Line/Polygon: [{lat, lng}, ...]
+    attributes JSONB DEFAULT '{}'::jsonb, -- Flexible key-value pairs matching layer schema
     photo_url TEXT,
-    notes TEXT,
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Sample Plots table
-CREATE TABLE IF NOT EXISTS public.sample_plots (
-    id BIGSERIAL PRIMARY KEY,
-    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-    name TEXT DEFAULT 'Unnamed Plot',
-    notes TEXT,
-    coordinates JSONB NOT NULL,  -- Array of {lat, lng} objects
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now()
-);
+ALTER TABLE public.features ENABLE ROW LEVEL SECURITY;
 
--- =========================================================================
--- MIGRATION: RUN THIS IF YOUR TABLES ALREADY EXIST BUT LACK THESE COLUMNS!
--- (Fixes: "column 'created_at' does not exist" when creating indexes)
--- =========================================================================
-ALTER TABLE public.trees 
-    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now(),
-    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now(),
-    ADD COLUMN IF NOT EXISTS elevation REAL DEFAULT 0;
+CREATE POLICY "Users can view features of their layers"
+    ON public.features FOR SELECT
+    USING (
+        auth.uid() = user_id
+        OR layer_id IN (
+            SELECT l.id FROM public.layers l
+            JOIN public.projects p ON l.project_id = p.id
+            WHERE p.is_public = true
+        )
+    );
 
-ALTER TABLE public.sample_plots 
-    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now(),
-    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+CREATE POLICY "Users can insert features"
+    ON public.features FOR INSERT
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their features"
+    ON public.features FOR UPDATE
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their features"
+    ON public.features FOR DELETE
+    USING (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_features_layer ON public.features(layer_id);
+CREATE INDEX IF NOT EXISTS idx_features_user ON public.features(user_id);
+CREATE INDEX IF NOT EXISTS idx_features_geometry_type ON public.features(geometry_type);
+CREATE INDEX IF NOT EXISTS idx_features_created ON public.features(created_at DESC);
 
 
--- Auto-update updated_at timestamp
+-- ========================================
+-- 4. TRIGGERS — Auto-update updated_at
+-- ========================================
+
 CREATE OR REPLACE FUNCTION update_modified_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -61,340 +151,122 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER update_trees_modtime
-    BEFORE UPDATE ON public.trees
+-- Drop existing triggers if they exist (safe for re-run)
+DROP TRIGGER IF EXISTS update_projects_modtime ON public.projects;
+DROP TRIGGER IF EXISTS update_layers_modtime ON public.layers;
+DROP TRIGGER IF EXISTS update_features_modtime ON public.features;
+
+CREATE TRIGGER update_projects_modtime
+    BEFORE UPDATE ON public.projects
     FOR EACH ROW EXECUTE FUNCTION update_modified_column();
 
-CREATE TRIGGER update_plots_modtime
-    BEFORE UPDATE ON public.sample_plots
+CREATE TRIGGER update_layers_modtime
+    BEFORE UPDATE ON public.layers
+    FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+
+CREATE TRIGGER update_features_modtime
+    BEFORE UPDATE ON public.features
     FOR EACH ROW EXECUTE FUNCTION update_modified_column();
 
 
 -- ========================================
--- 2. ROW LEVEL SECURITY (RLS)
--- Users can only see/edit their own data
--- ========================================
-
-ALTER TABLE public.trees ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.sample_plots ENABLE ROW LEVEL SECURITY;
-
--- Trees policies
-CREATE POLICY "Users can view their own trees"
-    ON public.trees FOR SELECT
-    USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert their own trees"
-    ON public.trees FOR INSERT
-    WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update their own trees"
-    ON public.trees FOR UPDATE
-    USING (auth.uid() = user_id)
-    WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete their own trees"
-    ON public.trees FOR DELETE
-    USING (auth.uid() = user_id);
-
--- Sample Plots policies
-CREATE POLICY "Users can view their own plots"
-    ON public.sample_plots FOR SELECT
-    USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert their own plots"
-    ON public.sample_plots FOR INSERT
-    WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update their own plots"
-    ON public.sample_plots FOR UPDATE
-    USING (auth.uid() = user_id)
-    WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete their own plots"
-    ON public.sample_plots FOR DELETE
-    USING (auth.uid() = user_id);
-
-
--- ========================================
--- 3. INDEXES for performance
--- ========================================
-
-CREATE INDEX IF NOT EXISTS idx_trees_user_id ON public.trees(user_id);
-CREATE INDEX IF NOT EXISTS idx_trees_species ON public.trees(species);
-CREATE INDEX IF NOT EXISTS idx_trees_health ON public.trees(health);
-CREATE INDEX IF NOT EXISTS idx_trees_location ON public.trees(latitude, longitude);
-CREATE INDEX IF NOT EXISTS idx_trees_created ON public.trees(created_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_plots_user_id ON public.sample_plots(user_id);
-CREATE INDEX IF NOT EXISTS idx_plots_created ON public.sample_plots(created_at DESC);
-
-
--- ========================================
--- 4. STORAGE BUCKET for tree photos
+-- 5. STORAGE BUCKET for feature photos
 -- ========================================
 
 -- Create the bucket (run once)
 INSERT INTO storage.buckets (id, name, public)
-VALUES ('tree-photos', 'tree-photos', true)
+VALUES ('feature-photos', 'feature-photos', true)
 ON CONFLICT (id) DO NOTHING;
 
 -- Allow authenticated users to upload to their own folder
-CREATE POLICY "Users can upload photos"
+DROP POLICY IF EXISTS "Users can upload feature photos" ON storage.objects;
+CREATE POLICY "Users can upload feature photos"
     ON storage.objects FOR INSERT
     WITH CHECK (
-        bucket_id = 'tree-photos'
+        bucket_id = 'feature-photos'
         AND auth.uid()::text = (storage.foldername(name))[1]
     );
 
 -- Allow public read access to photos
-CREATE POLICY "Public photo access"
+DROP POLICY IF EXISTS "Public feature photo access" ON storage.objects;
+CREATE POLICY "Public feature photo access"
     ON storage.objects FOR SELECT
-    USING (bucket_id = 'tree-photos');
+    USING (bucket_id = 'feature-photos');
 
 -- Allow users to delete their own photos
-CREATE POLICY "Users can delete own photos"
+DROP POLICY IF EXISTS "Users can delete own feature photos" ON storage.objects;
+CREATE POLICY "Users can delete own feature photos"
     ON storage.objects FOR DELETE
     USING (
-        bucket_id = 'tree-photos'
+        bucket_id = 'feature-photos'
         AND auth.uid()::text = (storage.foldername(name))[1]
     );
 
 
 -- ========================================
--- 5. MULTI-PHOTO SUPPORT (#17)
--- Optional: enables multiple photos per tree
+-- 6. ENABLE REALTIME
 -- ========================================
 
-CREATE TABLE IF NOT EXISTS public.tree_photos (
+ALTER PUBLICATION supabase_realtime ADD TABLE public.features;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.layers;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.projects;
+
+
+-- ========================================
+-- 7. AUDIT LOG (optional — generalized)
+-- ========================================
+
+CREATE TABLE IF NOT EXISTS public.feature_audit_log (
     id BIGSERIAL PRIMARY KEY,
-    tree_id BIGINT REFERENCES public.trees(id) ON DELETE CASCADE NOT NULL,
-    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-    photo_url TEXT NOT NULL,
-    caption TEXT,
-    created_at TIMESTAMPTZ DEFAULT now()
-);
-
-ALTER TABLE public.tree_photos ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can view photos of their trees"
-    ON public.tree_photos FOR SELECT
-    USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can add photos to their trees"
-    ON public.tree_photos FOR INSERT
-    WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete their own photos"
-    ON public.tree_photos FOR DELETE
-    USING (auth.uid() = user_id);
-
-CREATE INDEX IF NOT EXISTS idx_tree_photos_tree_id ON public.tree_photos(tree_id);
-
-
--- ========================================
--- 6. TEAM / PROJECT SUPPORT (#20)
--- Optional: enables shared projects between users
--- ========================================
-
--- Teams table
-CREATE TABLE IF NOT EXISTS public.teams (
-    id BIGSERIAL PRIMARY KEY,
-    name TEXT NOT NULL,
-    description TEXT,
-    owner_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT now()
-);
-
--- Team Members junction table
-CREATE TABLE IF NOT EXISTS public.team_members (
-    id BIGSERIAL PRIMARY KEY,
-    team_id BIGINT REFERENCES public.teams(id) ON DELETE CASCADE NOT NULL,
-    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-    role TEXT DEFAULT 'member' CHECK (role IN ('owner', 'admin', 'member', 'viewer')),
-    joined_at TIMESTAMPTZ DEFAULT now(),
-    UNIQUE(team_id, user_id)
-);
-
--- Add team_id to trees and plots (optional foreign key)
-ALTER TABLE public.trees
-    ADD COLUMN IF NOT EXISTS team_id BIGINT REFERENCES public.teams(id) ON DELETE SET NULL;
-
-ALTER TABLE public.sample_plots
-    ADD COLUMN IF NOT EXISTS team_id BIGINT REFERENCES public.teams(id) ON DELETE SET NULL;
-
--- RLS for teams
-ALTER TABLE public.teams ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.team_members ENABLE ROW LEVEL SECURITY;
-
--- Helper function to get team role (bypasses RLS to avoid infinite recursion)
-CREATE OR REPLACE FUNCTION public.get_team_role(t_id BIGINT, u_id UUID)
-RETURNS TEXT
-SECURITY DEFINER
-SET search_path = public
-LANGUAGE plpgsql AS $body$
-DECLARE
-    v_role TEXT;
-BEGIN
-    -- Check if owner
-    IF EXISTS (SELECT 1 FROM public.teams WHERE id = t_id AND owner_id = u_id) THEN
-        RETURN 'owner';
-    END IF;
-
-    -- Check membership role
-    SELECT role INTO v_role
-    FROM public.team_members
-    WHERE team_id = t_id AND user_id = u_id;
-
-    RETURN v_role;
-END;
-$body$;
-
--- Drop existing policies if they exist to avoid conflict
-DROP POLICY IF EXISTS "Users can view teams they belong to" ON public.teams;
-DROP POLICY IF EXISTS "Users can create teams" ON public.teams;
-DROP POLICY IF EXISTS "Team owners can update their teams" ON public.teams;
-DROP POLICY IF EXISTS "Team owners can delete their teams" ON public.teams;
-DROP POLICY IF EXISTS "Users can view their team memberships" ON public.team_members;
-DROP POLICY IF EXISTS "Team owners/admins can manage members" ON public.team_members;
-DROP POLICY IF EXISTS "Team members can view shared trees" ON public.trees;
-DROP POLICY IF EXISTS "Team members can view shared plots" ON public.sample_plots;
-
--- RLS Policies using helper function
-CREATE POLICY "Users can view teams they belong to"
-    ON public.teams FOR SELECT
-    USING (
-        owner_id = auth.uid()
-        OR public.get_team_role(id, auth.uid()) IS NOT NULL
-    );
-
-CREATE POLICY "Users can create teams"
-    ON public.teams FOR INSERT
-    WITH CHECK (auth.uid() = owner_id);
-
-CREATE POLICY "Team owners can update their teams"
-    ON public.teams FOR UPDATE
-    USING (auth.uid() = owner_id);
-
-CREATE POLICY "Team owners can delete their teams"
-    ON public.teams FOR DELETE
-    USING (auth.uid() = owner_id);
-
-CREATE POLICY "Users can view their team memberships"
-    ON public.team_members FOR SELECT
-    USING (
-        public.get_team_role(team_id, auth.uid()) IS NOT NULL
-    );
-
-CREATE POLICY "Team owners/admins can manage members"
-    ON public.team_members FOR ALL
-    USING (
-        public.get_team_role(team_id, auth.uid()) IN ('owner', 'admin')
-    );
-
--- Optional: Allow team members to see shared trees/plots
-CREATE POLICY "Team members can view shared trees"
-    ON public.trees FOR SELECT
-    USING (
-        auth.uid() = user_id
-        OR (team_id IS NOT NULL AND public.get_team_role(team_id, auth.uid()) IS NOT NULL)
-    );
-
-CREATE POLICY "Team members can view shared plots"
-    ON public.sample_plots FOR SELECT
-    USING (
-        auth.uid() = user_id
-        OR (team_id IS NOT NULL AND public.get_team_role(team_id, auth.uid()) IS NOT NULL)
-    );
-
-CREATE INDEX IF NOT EXISTS idx_teams_owner ON public.teams(owner_id);
-CREATE INDEX IF NOT EXISTS idx_team_members_user ON public.team_members(user_id);
-CREATE INDEX IF NOT EXISTS idx_team_members_team ON public.team_members(team_id);
-CREATE INDEX IF NOT EXISTS idx_trees_team ON public.trees(team_id);
-CREATE INDEX IF NOT EXISTS idx_plots_team ON public.sample_plots(team_id);
-
-
--- ========================================
--- 7. AUDIT LOG / HISTORY (#18)
--- Optional: tracks all changes for timeline view
--- ========================================
-
-CREATE TABLE IF NOT EXISTS public.tree_audit_log (
-    id BIGSERIAL PRIMARY KEY,
-    tree_id BIGINT NOT NULL,
+    feature_id BIGINT NOT NULL,
     user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
     action TEXT NOT NULL CHECK (action IN ('INSERT', 'UPDATE', 'DELETE')),
     old_data JSONB,
     new_data JSONB,
-    changed_fields TEXT[],
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
-ALTER TABLE public.tree_audit_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.feature_audit_log ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view audit logs for their trees"
-    ON public.tree_audit_log FOR SELECT
+CREATE POLICY "Users can view audit logs"
+    ON public.feature_audit_log FOR SELECT
     USING (auth.uid() = user_id);
 
--- Allow authenticated users to insert their own audit log rows
--- (Also covered by SECURITY DEFINER on the trigger function below)
-CREATE POLICY "Users can insert audit logs for their trees"
-    ON public.tree_audit_log FOR INSERT
+CREATE POLICY "Users can insert audit logs"
+    ON public.feature_audit_log FOR INSERT
     WITH CHECK (auth.uid() = user_id);
 
--- Trigger function to auto-log changes
-CREATE OR REPLACE FUNCTION log_tree_changes()
+CREATE OR REPLACE FUNCTION log_feature_changes()
 RETURNS TRIGGER AS $$
 BEGIN
     IF TG_OP = 'INSERT' THEN
-        INSERT INTO public.tree_audit_log (tree_id, user_id, action, new_data)
+        INSERT INTO public.feature_audit_log (feature_id, user_id, action, new_data)
         VALUES (NEW.id, NEW.user_id, 'INSERT', to_jsonb(NEW));
         RETURN NEW;
     ELSIF TG_OP = 'UPDATE' THEN
-        INSERT INTO public.tree_audit_log (tree_id, user_id, action, old_data, new_data, changed_fields)
-        VALUES (
-            NEW.id,
-            NEW.user_id,
-            'UPDATE',
-            to_jsonb(OLD),
-            to_jsonb(NEW),
-            ARRAY(
-                SELECT key FROM jsonb_each(to_jsonb(NEW))
-                WHERE to_jsonb(NEW) -> key IS DISTINCT FROM to_jsonb(OLD) -> key
-            )
-        );
+        INSERT INTO public.feature_audit_log (feature_id, user_id, action, old_data, new_data)
+        VALUES (NEW.id, NEW.user_id, 'UPDATE', to_jsonb(OLD), to_jsonb(NEW));
         RETURN NEW;
     ELSIF TG_OP = 'DELETE' THEN
-        INSERT INTO public.tree_audit_log (tree_id, user_id, action, old_data)
+        INSERT INTO public.feature_audit_log (feature_id, user_id, action, old_data)
         VALUES (OLD.id, OLD.user_id, 'DELETE', to_jsonb(OLD));
         RETURN OLD;
     END IF;
     RETURN NULL;
 END;
--- SECURITY DEFINER lets this trigger function bypass RLS on tree_audit_log.
--- Without it, the trigger runs as the calling user and is blocked because
--- there is no INSERT policy granting the trigger itself write access.
 $$ LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public;
 
-CREATE TRIGGER tree_audit_trigger
-    AFTER INSERT OR UPDATE OR DELETE ON public.trees
-    FOR EACH ROW EXECUTE FUNCTION log_tree_changes();
+DROP TRIGGER IF EXISTS feature_audit_trigger ON public.features;
+CREATE TRIGGER feature_audit_trigger
+    AFTER INSERT OR UPDATE OR DELETE ON public.features
+    FOR EACH ROW EXECUTE FUNCTION log_feature_changes();
 
-CREATE INDEX IF NOT EXISTS idx_audit_tree_id ON public.tree_audit_log(tree_id);
-CREATE INDEX IF NOT EXISTS idx_audit_created ON public.tree_audit_log(created_at DESC);
-
-
--- ========================================
--- 8. ENABLE REALTIME (#31)
--- Allows live updates when data changes
--- ========================================
-
--- Enable realtime for trees and plots tables
-ALTER PUBLICATION supabase_realtime ADD TABLE public.trees;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.sample_plots;
+CREATE INDEX IF NOT EXISTS idx_feature_audit_id ON public.feature_audit_log(feature_id);
+CREATE INDEX IF NOT EXISTS idx_feature_audit_created ON public.feature_audit_log(created_at DESC);
 
 
 -- ========================================
 -- DONE! 🎉
--- Your Supabase backend is fully configured.
+-- Your OpenGIS backend is ready.
 -- ========================================

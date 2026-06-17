@@ -1,23 +1,21 @@
 {
-  "name": "Forestry Tree Mapper",
-  "short_name": "TreeMapper",
-  "description": "Map and manage forestry trees and sample plots with GIS tools",
-  "start_url": "./index.html",
-  "display": "standalone",
-  "background_color": "#0f1a0f",
-  "theme_color": "#2d6a2e",
-  "icons": [
-    {
-      "src": "icons/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "icons/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
-  ]
+    "name": "OpenGIS",
+    "short_name": "OpenGIS",
+    "description": "A free, open-source GIS platform. Map, analyze, and share spatial data – online or offline.",
+    "start_url": ".",
+    "display": "standalone",
+    "theme_color": "#0f172a",
+    "background_color": "#0f172a",
+    "icons": [
+        {
+            "src": "icons/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ]
 }

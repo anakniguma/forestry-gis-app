@@ -1,8 +1,8 @@
 // ========================================
-// Forestry Tree Mapper — Utility Functions
+// OpenGIS — Utility Functions
 // ========================================
 
-// --- XSS Sanitization (#26) ---
+// --- XSS Sanitization ---
 const SANITIZE_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
 
 export function sanitize(str) {
@@ -10,7 +10,7 @@ export function sanitize(str) {
     return String(str).replace(/[&<>"']/g, c => SANITIZE_MAP[c]);
 }
 
-// --- Debounce (#28) ---
+// --- Debounce ---
 export function debounce(fn, ms) {
     let timer;
     return function (...args) {
@@ -19,24 +19,9 @@ export function debounce(fn, ms) {
     };
 }
 
-// --- Forestry Calculations (#33, #34) ---
-export function calculateBasalArea(dbhCm) {
-    // BA = π × (DBH/2)² — result in cm², convert to m²
-    if (!dbhCm || dbhCm <= 0) return 0;
-    const radiusCm = dbhCm / 2;
-    return Math.PI * radiusCm * radiusCm / 10000; // m²
-}
-
-export function calculateVolume(dbhCm, heightM) {
-    // V = BA × Height × Form Factor (0.42 is common for tropical trees)
-    if (!dbhCm || !heightM || dbhCm <= 0 || heightM <= 0) return 0;
-    const ba = calculateBasalArea(dbhCm);
-    return ba * heightM * 0.42; // m³
-}
-
-// --- Geospatial Calculations (#14, #32) ---
+// --- Geospatial Calculations ---
 export function haversineDistance(lat1, lng1, lat2, lng2) {
-    const R = 6371000; // Earth radius in meters
+    const R = 6371000;
     const toRad = d => d * Math.PI / 180;
     const dLat = toRad(lat2 - lat1);
     const dLng = toRad(lng2 - lng1);
@@ -45,7 +30,6 @@ export function haversineDistance(lat1, lng1, lat2, lng2) {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// --- Elevation API (#40) ---
 export async function fetchElevation(lat, lng) {
     try {
         const response = await fetch(`https://api.opentopodata.org/v1/srtm90m?locations=${lat},${lng}`);
@@ -61,8 +45,6 @@ export async function fetchElevation(lat, lng) {
 }
 
 export function calculatePolygonArea(latlngs) {
-    // Shoelace formula with haversine-based distances (approximate for small polygons)
-    // Uses spherical excess for more accuracy
     if (!latlngs || latlngs.length < 3) return 0;
     const toRad = d => d * Math.PI / 180;
     let total = 0;
@@ -94,19 +76,26 @@ export function calculatePolygonPerimeter(latlngs) {
 }
 
 export function pointInPolygon(lat, lng, polygon) {
-    // Ray-casting algorithm
     let inside = false;
     for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
         const xi = polygon[i].lat || polygon[i][0];
         const yi = polygon[i].lng || polygon[i][1];
         const xj = polygon[j].lat || polygon[j][0];
         const yj = polygon[j].lng || polygon[j][1];
-
         const intersect = ((yi > lng) !== (yj > lng)) &&
             (lat < (xj - xi) * (lng - yi) / (yj - yi) + xi);
         if (intersect) inside = !inside;
     }
     return inside;
+}
+
+export function countFeaturesInPolygon(features, polygonCoords) {
+    return features.filter(f => {
+        if (f.geometry_type !== 'Point') return false;
+        const coords = f.coordinates;
+        if (!coords) return false;
+        return pointInPolygon(coords.lat || coords[0], coords.lng || coords[1], polygonCoords);
+    });
 }
 
 // --- Formatting ---
@@ -125,8 +114,26 @@ export function formatNumber(num, decimals = 2) {
     return Number(num).toFixed(decimals);
 }
 
-// --- Photo Compression (#29) ---
-export function compressImage(file, maxWidth = 1600, quality = 0.8) {
+export function formatDistance(meters) {
+    if (meters > 1000) return (meters / 1000).toFixed(2) + ' km';
+    return meters.toFixed(1) + ' m';
+}
+
+// --- Forestry-specific calculations (kept for Forestry template) ---
+export function calculateBasalArea(dbhCm) {
+    if (!dbhCm || dbhCm <= 0) return 0;
+    const radiusCm = dbhCm / 2;
+    return Math.PI * radiusCm * radiusCm / 10000; // m²
+}
+
+export function calculateVolume(dbhCm, heightM) {
+    if (!dbhCm || !heightM || dbhCm <= 0 || heightM <= 0) return 0;
+    const ba = calculateBasalArea(dbhCm);
+    return ba * heightM * 0.42; // m³
+}
+
+// --- Photo Compression ---
+export function compressImage(file, maxWidth = 1200, quality = 0.7) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -152,7 +159,7 @@ export function compressImage(file, maxWidth = 1600, quality = 0.8) {
                             });
                             resolve(compressed);
                         } else {
-                            resolve(file); // fallback to original
+                            resolve(file);
                         }
                     },
                     'image/jpeg',
@@ -177,86 +184,132 @@ export function escapeCSV(val) {
     return str;
 }
 
-// --- Export Functions (#12) ---
-export function treesToCSV(trees) {
-    const headers = ['id', 'species', 'dbh_cm', 'height_m', 'elevation_m', 'health', 'latitude', 'longitude', 'basal_area_m2', 'volume_m3', 'notes', 'photo_url', 'created_at'];
-    const rows = trees.map(t => [
-        escapeCSV(t.id), escapeCSV(t.species), escapeCSV(t.dbh), escapeCSV(t.height), escapeCSV(t.elevation),
-        escapeCSV(t.health), escapeCSV(t.latitude), escapeCSV(t.longitude),
-        escapeCSV(formatNumber(calculateBasalArea(t.dbh), 4)),
-        escapeCSV(formatNumber(calculateVolume(t.dbh, t.height), 4)),
-        escapeCSV(t.notes), escapeCSV(t.photo_url), escapeCSV(t.created_at)
-    ].join(','));
+// --- Generic Export Functions ---
+export function featuresToCSV(features, layers) {
+    if (!features.length) return '';
+    // Collect all unique attribute keys across features
+    const attrKeys = new Set();
+    features.forEach(f => {
+        if (f.attributes) {
+            Object.keys(f.attributes).forEach(k => attrKeys.add(k));
+        }
+    });
+    const sortedKeys = Array.from(attrKeys).sort();
+    const headers = ['id', 'layer', 'geometry_type', 'latitude', 'longitude', ...sortedKeys, 'photo_url', 'created_at'];
+
+    const layerMap = {};
+    layers.forEach(l => { layerMap[l.id] = l.name; });
+
+    const rows = features.map(f => {
+        const coords = f.coordinates || {};
+        const lat = coords.lat || (Array.isArray(coords) ? coords[0]?.lat || '' : '');
+        const lng = coords.lng || (Array.isArray(coords) ? coords[0]?.lng || '' : '');
+        const attrVals = sortedKeys.map(k => escapeCSV(f.attributes?.[k] || ''));
+        return [
+            escapeCSV(f.id),
+            escapeCSV(layerMap[f.layer_id] || ''),
+            escapeCSV(f.geometry_type),
+            escapeCSV(lat), escapeCSV(lng),
+            ...attrVals,
+            escapeCSV(f.photo_url),
+            escapeCSV(f.created_at),
+        ].join(',');
+    });
     return [headers.join(','), ...rows].join('\n');
 }
 
-export function treesToGeoJSON(trees) {
+export function featuresToGeoJSON(features, layers) {
+    const layerMap = {};
+    layers.forEach(l => { layerMap[l.id] = l.name; });
+
     return JSON.stringify({
         type: 'FeatureCollection',
-        features: trees.map(t => ({
-            type: 'Feature',
-            geometry: { type: 'Point', coordinates: [t.longitude, t.latitude] },
-            properties: {
-                id: t.id, species: t.species, dbh: t.dbh, height: t.height, elevation: t.elevation,
-                health: t.health, notes: t.notes, photo_url: t.photo_url,
-                basal_area_m2: +formatNumber(calculateBasalArea(t.dbh), 4),
-                volume_m3: +formatNumber(calculateVolume(t.dbh, t.height), 4),
-                created_at: t.created_at
+        features: features.map(f => {
+            let geometry;
+            if (f.geometry_type === 'Point') {
+                geometry = { type: 'Point', coordinates: [f.coordinates.lng, f.coordinates.lat] };
+            } else if (f.geometry_type === 'LineString') {
+                geometry = {
+                    type: 'LineString',
+                    coordinates: f.coordinates.map(c => [c.lng, c.lat])
+                };
+            } else if (f.geometry_type === 'Polygon') {
+                const ring = f.coordinates.map(c => [c.lng, c.lat]);
+                ring.push(ring[0]); // close ring
+                geometry = { type: 'Polygon', coordinates: [ring] };
             }
-        }))
+            return {
+                type: 'Feature',
+                geometry,
+                properties: {
+                    id: f.id,
+                    layer: layerMap[f.layer_id] || '',
+                    ...(f.attributes || {}),
+                    photo_url: f.photo_url || null,
+                    created_at: f.created_at,
+                }
+            };
+        })
     }, null, 2);
 }
 
-export function plotsToGeoJSON(plots) {
-    return JSON.stringify({
-        type: 'FeatureCollection',
-        features: plots.map(p => ({
-            type: 'Feature',
-            geometry: {
-                type: 'Polygon',
-                coordinates: [p.coordinates.map(c => [c.lng, c.lat]).concat([
-                    [p.coordinates[0].lng, p.coordinates[0].lat]
-                ])]
-            },
-            properties: { id: p.id, name: p.name, notes: p.notes }
-        }))
-    }, null, 2);
-}
+export function featuresToKML(features, layers, projectName) {
+    const layerMap = {};
+    layers.forEach(l => { layerMap[l.id] = l.name; });
 
-export function treesToKML(trees) {
-    const placemarks = trees.map(t => `
+    const placemarks = features.map(f => {
+        const name = f.attributes?.name || f.attributes?.species || 'Feature';
+        let coordStr = '';
+        if (f.geometry_type === 'Point') {
+            coordStr = `${f.coordinates.lng},${f.coordinates.lat},0`;
+            return `
     <Placemark>
-      <name>${sanitize(t.species || 'Unknown')}</name>
-      <description>DBH: ${t.dbh}cm, Height: ${t.height}m, Health: ${t.health}</description>
-      <Point><coordinates>${t.longitude},${t.latitude},0</coordinates></Point>
-    </Placemark>`).join('');
+      <name>${sanitize(name)}</name>
+      <description>Layer: ${sanitize(layerMap[f.layer_id] || '')}</description>
+      <Point><coordinates>${coordStr}</coordinates></Point>
+    </Placemark>`;
+        } else if (f.geometry_type === 'LineString') {
+            coordStr = f.coordinates.map(c => `${c.lng},${c.lat},0`).join(' ');
+            return `
+    <Placemark>
+      <name>${sanitize(name)}</name>
+      <LineString><coordinates>${coordStr}</coordinates></LineString>
+    </Placemark>`;
+        } else if (f.geometry_type === 'Polygon') {
+            coordStr = f.coordinates.map(c => `${c.lng},${c.lat},0`).join(' ');
+            const first = f.coordinates[0];
+            coordStr += ` ${first.lng},${first.lat},0`;
+            return `
+    <Placemark>
+      <name>${sanitize(name)}</name>
+      <Polygon><outerBoundaryIs><LinearRing><coordinates>${coordStr}</coordinates></LinearRing></outerBoundaryIs></Polygon>
+    </Placemark>`;
+        }
+        return '';
+    }).join('');
 
     return `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
 <Document>
-  <name>Forestry Tree Inventory</name>
+  <name>${sanitize(projectName || 'OpenGIS Export')}</name>
   ${placemarks}
 </Document>
 </kml>`;
 }
 
-// --- CSV Import Parser (#16) ---
+// --- CSV Import Parser (generic) ---
 export function parseCSVImport(csvText) {
     const lines = csvText.trim().split('\n');
     if (lines.length < 2) return { headers: [], rows: [], errors: ['File is empty or has no data rows.'] };
 
     const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
     const requiredFields = ['latitude', 'longitude'];
-    const missingFields = requiredFields.filter(f => !headers.includes(f) && !headers.includes(f.replace('_', '')));
+    const altHeaders = { 'lat': 'latitude', 'lng': 'longitude', 'lon': 'longitude' };
+    const mappedHeaders = headers.map(h => altHeaders[h] || h);
+    const missingFields = requiredFields.filter(f => !mappedHeaders.includes(f));
 
     if (missingFields.length > 0) {
-        // Try alternate header names
-        const altHeaders = { 'lat': 'latitude', 'lng': 'longitude', 'lon': 'longitude' };
-        const mappedHeaders = headers.map(h => altHeaders[h] || h);
-        const stillMissing = requiredFields.filter(f => !mappedHeaders.includes(f));
-        if (stillMissing.length > 0) {
-            return { headers, rows: [], errors: [`Missing required columns: ${stillMissing.join(', ')}`] };
-        }
+        return { headers, rows: [], errors: [`Missing required columns: ${missingFields.join(', ')}`] };
     }
 
     const errors = [];
@@ -267,7 +320,7 @@ export function parseCSVImport(csvText) {
         const values = parseCSVLine(lines[i]);
         const row = {};
         headers.forEach((h, idx) => {
-            const key = h === 'lat' ? 'latitude' : h === 'lng' || h === 'lon' ? 'longitude' : h;
+            const key = altHeaders[h] || h;
             row[key] = values[idx] || '';
         });
 
@@ -280,17 +333,10 @@ export function parseCSVImport(csvText) {
 
         row.latitude = lat;
         row.longitude = lng;
-        row.dbh = parseFloat(row.dbh || row.dbh_cm) || 0;
-        row.height = parseFloat(row.height || row.height_m) || 0;
-        row.elevation = parseFloat(row.elevation || row.elevation_m) || 0;
-        row.species = row.species || 'Unknown';
-        row.health = ['Healthy', 'Diseased', 'Dead'].includes(row.health) ? row.health : 'Healthy';
-        row.notes = row.notes || '';
-
         rows.push(row);
     }
 
-    return { headers, rows, errors };
+    return { headers: mappedHeaders, rows, errors };
 }
 
 function parseCSVLine(line) {
@@ -317,6 +363,57 @@ function parseCSVLine(line) {
     return result;
 }
 
+// --- GeoJSON Import Parser ---
+export function parseGeoJSONImport(text) {
+    try {
+        const geojson = JSON.parse(text);
+        if (geojson.type !== 'FeatureCollection' || !Array.isArray(geojson.features)) {
+            return { features: [], errors: ['Invalid GeoJSON: must be a FeatureCollection'] };
+        }
+
+        const features = [];
+        const errors = [];
+
+        geojson.features.forEach((f, idx) => {
+            if (!f.geometry || !f.geometry.type || !f.geometry.coordinates) {
+                errors.push(`Feature ${idx + 1}: Missing geometry`);
+                return;
+            }
+
+            const geoType = f.geometry.type;
+            let coordinates;
+
+            if (geoType === 'Point') {
+                coordinates = { lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0] };
+            } else if (geoType === 'LineString') {
+                coordinates = f.geometry.coordinates.map(c => ({ lat: c[1], lng: c[0] }));
+            } else if (geoType === 'Polygon') {
+                // Take outer ring, skip closing duplicate
+                const ring = f.geometry.coordinates[0];
+                coordinates = ring.slice(0, -1).map(c => ({ lat: c[1], lng: c[0] }));
+            } else {
+                errors.push(`Feature ${idx + 1}: Unsupported geometry type "${geoType}"`);
+                return;
+            }
+
+            const props = f.properties || {};
+            // Strip out known non-attribute keys
+            const { id, layer, photo_url, created_at, ...attributes } = props;
+
+            features.push({
+                geometry_type: geoType,
+                coordinates,
+                attributes,
+                photo_url: photo_url || null,
+            });
+        });
+
+        return { features, errors };
+    } catch (e) {
+        return { features: [], errors: ['Failed to parse GeoJSON: ' + e.message] };
+    }
+}
+
 // --- File Download Helper ---
 export function downloadFile(content, filename, mimeType) {
     const blob = new Blob([content], { type: mimeType });
@@ -330,44 +427,64 @@ export function downloadFile(content, filename, mimeType) {
     URL.revokeObjectURL(url);
 }
 
-// --- Input Validation (#27) ---
-export function validateTreeInput(species, dbh, height) {
-    const errors = [];
-    if (species && species.length > 100) errors.push('Species name too long (max 100 chars)');
-    if (dbh < 0 || dbh > 500) errors.push('DBH must be between 0 and 500 cm');
-    if (height < 0 || height > 150) errors.push('Height must be between 0 and 150 m');
-    return errors;
-}
-
-// --- Haptic Feedback (#22) ---
+// --- Haptic Feedback ---
 export function haptic(pattern = [10]) {
     if ('vibrate' in navigator) {
         try { navigator.vibrate(pattern); } catch (e) { /* ignore */ }
     }
 }
 
-// --- Count trees in polygon (#32) ---
-export function countTreesInPolygon(trees, polygonCoords) {
-    return trees.filter(t =>
-        pointInPolygon(t.latitude || t.lat, t.longitude || t.lng, polygonCoords)
-    );
-}
-
-// --- Unique Alphanumeric Code Mapping ---
-export function treeIdToCode(id) {
-    if (!id) return 'TR-UNKNOWN';
+// --- Feature Code Mapping (for QR/deep links) ---
+export function featureIdToCode(id) {
+    if (!id) return 'FT-UNKNOWN';
     const prime = 15485863;
-    const modulo = 268435456; // 2^28
+    const modulo = 268435456;
     const mixed = (Number(id) * prime) % modulo;
-    return 'TR-' + mixed.toString(36).toUpperCase().padStart(6, '0');
+    return 'FT-' + mixed.toString(36).toUpperCase().padStart(6, '0');
 }
 
-export function treeCodeToId(code) {
-    if (!code || !code.startsWith('TR-')) return null;
+export function featureCodeToId(code) {
+    if (!code || !code.startsWith('FT-')) return null;
     const mixPart = code.substring(3).toLowerCase();
     const mixed = parseInt(mixPart, 36);
     if (isNaN(mixed)) return null;
     const inv = 44542999;
     const modulo = 268435456;
     return (mixed * inv) % modulo;
+}
+
+// --- Generate Share Token ---
+export function generateShareToken() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let result = '';
+    const arr = new Uint8Array(24);
+    crypto.getRandomValues(arr);
+    for (let i = 0; i < 24; i++) {
+        result += chars[arr[i] % chars.length];
+    }
+    return result;
+}
+
+// --- Input Validation (generic) ---
+export function validateFeatureInput(attributes, schema) {
+    const errors = [];
+    if (!schema) return errors;
+    schema.forEach(field => {
+        if (field.required && (!attributes[field.key] || String(attributes[field.key]).trim() === '')) {
+            errors.push(`${field.label} is required`);
+        }
+        if (field.type === 'number' && attributes[field.key] != null && attributes[field.key] !== '') {
+            const val = parseFloat(attributes[field.key]);
+            if (isNaN(val)) {
+                errors.push(`${field.label} must be a number`);
+            } else {
+                if (field.min != null && val < field.min) errors.push(`${field.label} must be at least ${field.min}`);
+                if (field.max != null && val > field.max) errors.push(`${field.label} must be at most ${field.max}`);
+            }
+        }
+        if (field.type === 'text' && attributes[field.key] && String(attributes[field.key]).length > 200) {
+            errors.push(`${field.label} is too long (max 200 chars)`);
+        }
+    });
+    return errors;
 }

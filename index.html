@@ -6,8 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#0f172a">
     <meta name="description"
-        content="Forestry Tree Mapper – map trees, draw sample plots, upload photos, analyze forestry data, and work offline.">
-    <title>Forestry Tree Mapper</title>
+        content="OpenGIS – A free, open-source GIS platform. Map, analyze, and share spatial data – online or offline.">
+    <title>OpenGIS</title>
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="icons/icon-192.png">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -31,60 +31,32 @@
 
     <!-- ==================== Auth Screen ==================== -->
     <div id="auth-screen">
-        <!-- Particle canvas -->
         <canvas id="auth-particles-canvas"></canvas>
         <div class="auth-bg-pattern"></div>
 
-        <!-- Left: Forest Visual Panel -->
+        <!-- Left: Visual Panel -->
         <div class="auth-visual-panel">
-            <!-- Ambient sun glow -->
             <div class="auth-sun-glow"></div>
 
-            <!-- Layered Forest SVG -->
-            <svg class="auth-forest-svg" viewBox="0 0 900 520" preserveAspectRatio="xMidYMax meet" xmlns="http://www.w3.org/2000/svg">
-                <!-- Far background trees (lightest) -->
-                <g opacity="0.25" style="animation: treeSway2 9s ease-in-out infinite;">
-                    <polygon points="80,370 120,200 160,370" fill="#2d6a2e"/>
-                    <polygon points="70,370 120,170 170,370" fill="#2d6a2e"/>
-                    <rect x="112" y="360" width="16" height="30" fill="#1a3d1a"/>
-                    <polygon points="200,380 240,220 280,380" fill="#2a6030"/>
-                    <rect x="232" y="368" width="16" height="32" fill="#1a3d1a"/>
-                    <polygon points="680,375 720,215 760,375" fill="#2a6030"/>
-                    <rect x="712" y="363" width="16" height="32" fill="#1a3d1a"/>
-                    <polygon points="760,368 800,205 840,368" fill="#2d6a2e"/>
-                    <rect x="792" y="356" width="16" height="32" fill="#1a3d1a"/>
-                </g>
-                <!-- Mid-ground trees -->
-                <g opacity="0.55" style="animation: treeSway 7s ease-in-out infinite 1s;">
-                    <polygon points="0,430 55,230 110,430" fill="#1e5221"/>
-                    <polygon points="-10,430 55,200 120,430" fill="#236325"/>
-                    <rect x="45" y="415" width="20" height="45" fill="#142e14"/>
-                    <polygon points="130,425 185,235 240,425" fill="#225e24"/>
-                    <rect x="176" y="410" width="18" height="45" fill="#142e14"/>
-                    <polygon points="300,435 360,245 420,435" fill="#1e5221"/>
-                    <polygon points="290,435 360,210 430,435" fill="#236325"/>
-                    <rect x="349" y="418" width="22" height="47" fill="#142e14"/>
-                    <polygon points="600,428 658,238 716,428" fill="#225e24"/>
-                    <rect x="649" y="412" width="18" height="46" fill="#142e14"/>
-                    <polygon points="700,432 760,240 820,432" fill="#1e5221"/>
-                    <rect x="751" y="415" width="18" height="47" fill="#142e14"/>
-                    <polygon points="810,425 870,230 930,425" fill="#236325"/>
-                    <rect x="861" y="408" width="18" height="47" fill="#142e14"/>
-                </g>
-                <!-- Foreground trees (darkest, tallest) -->
-                <g opacity="0.85" style="animation: treeSway2 5s ease-in-out infinite 0.5s;">
-                    <polygon points="430,510 510,260 590,510" fill="#163d17"/>
-                    <polygon points="415,510 510,230 605,510" fill="#1a4a1b"/>
-                    <rect x="497" y="490" width="26" height="50" fill="#0e2510"/>
-                    <polygon points="20,510 90,290 160,510" fill="#163d17"/>
-                    <rect x="80" y="490" width="20" height="50" fill="#0e2510"/>
-                    <polygon points="740,510 815,275 890,510" fill="#1a4a1b"/>
-                    <rect x="806" y="490" width="18" height="50" fill="#0e2510"/>
-                    <polygon points="-20,510 40,300 100,510" fill="#163d17"/>
-                    <polygon points="850,510 910,295 970,510" fill="#163d17"/>
-                </g>
-                <!-- Ground strip -->
-                <rect x="0" y="490" width="900" height="30" fill="#0d2b0d" opacity="0.7"/>
+            <!-- Globe / Map SVG -->
+            <svg class="auth-globe-svg" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+                <!-- Globe background -->
+                <circle cx="200" cy="200" r="150" fill="none" stroke="rgba(76,154,255,0.15)" stroke-width="1"/>
+                <circle cx="200" cy="200" r="120" fill="none" stroke="rgba(76,154,255,0.1)" stroke-width="1"/>
+                <circle cx="200" cy="200" r="90" fill="none" stroke="rgba(76,154,255,0.08)" stroke-width="1"/>
+                <!-- Latitude lines -->
+                <ellipse cx="200" cy="200" rx="150" ry="40" fill="none" stroke="rgba(76,154,255,0.12)" stroke-width="0.8" style="animation: globeRotate 20s linear infinite;"/>
+                <ellipse cx="200" cy="200" rx="150" ry="80" fill="none" stroke="rgba(76,154,255,0.1)" stroke-width="0.8" style="animation: globeRotate 25s linear infinite reverse;"/>
+                <ellipse cx="200" cy="200" rx="150" ry="120" fill="none" stroke="rgba(76,154,255,0.08)" stroke-width="0.8"/>
+                <!-- Meridian lines -->
+                <ellipse cx="200" cy="200" rx="40" ry="150" fill="none" stroke="rgba(76,154,255,0.1)" stroke-width="0.8" style="animation: globeRotate 30s linear infinite;"/>
+                <ellipse cx="200" cy="200" rx="90" ry="150" fill="none" stroke="rgba(76,154,255,0.08)" stroke-width="0.8"/>
+                <!-- Pin markers -->
+                <circle cx="160" cy="140" r="5" fill="#4C9AFF" opacity="0.8" style="animation: pinPulse 3s ease-in-out infinite;"/>
+                <circle cx="240" cy="180" r="4" fill="#FF6B6B" opacity="0.7" style="animation: pinPulse 3s ease-in-out infinite 1s;"/>
+                <circle cx="200" cy="250" r="4.5" fill="#51CF66" opacity="0.75" style="animation: pinPulse 3s ease-in-out infinite 2s;"/>
+                <circle cx="280" cy="160" r="3.5" fill="#FFD43B" opacity="0.65" style="animation: pinPulse 3s ease-in-out infinite 0.5s;"/>
+                <circle cx="140" cy="220" r="3" fill="#CC5DE8" opacity="0.6" style="animation: pinPulse 3s ease-in-out infinite 1.5s;"/>
             </svg>
 
             <!-- Fog layers -->
@@ -93,14 +65,14 @@
 
             <!-- Branding -->
             <div class="auth-visual-brand">
-                <span class="brand-icon">🌲</span>
-                <h1>Forestry Tree Mapper</h1>
-                <p>Map, measure, and manage your entire forest inventory — online or offline.</p>
+                <span class="brand-icon">🌐</span>
+                <h1>OpenGIS</h1>
+                <p>Map, analyze, and share spatial data — free, offline-capable, and open-source.</p>
                 <div class="auth-feature-pills">
-                    <span class="auth-feature-pill">📍 GPS Mapping</span>
-                    <span class="auth-feature-pill">📊 Analytics</span>
+                    <span class="auth-feature-pill">📍 Any Data</span>
+                    <span class="auth-feature-pill">🗂️ Layer Management</span>
                     <span class="auth-feature-pill">📶 Offline Ready</span>
-                    <span class="auth-feature-pill">📷 Photo Tags</span>
+                    <span class="auth-feature-pill">🤝 Team Collaboration</span>
                 </div>
             </div>
         </div>
@@ -108,16 +80,14 @@
         <!-- Right: Form Panel -->
         <div class="auth-form-panel">
             <div class="auth-form-inner">
-
-                <!-- Mobile logo (hidden on desktop) -->
                 <div class="auth-form-logo">
-                    <span class="brand-icon">🌲</span>
-                    <h1>Forestry Tree Mapper</h1>
+                    <span class="brand-icon">🌐</span>
+                    <h1>OpenGIS</h1>
                 </div>
 
                 <div class="auth-form-heading">
                     <h2>Welcome back</h2>
-                    <p>Sign in to access your forest inventory</p>
+                    <p>Sign in to access your maps</p>
                 </div>
 
                 <div class="auth-tabs">
@@ -189,8 +159,34 @@
                     <div class="auth-error" id="signup-error"></div>
                     <div class="auth-success" id="signup-success"></div>
                 </form>
-
             </div>
+        </div>
+    </div>
+
+    <!-- ==================== Project Screen ==================== -->
+    <div id="project-screen">
+        <div class="project-screen-header">
+            <div class="project-screen-brand">
+                <span class="brand-icon-sm">🌐</span>
+                <h1>OpenGIS</h1>
+            </div>
+            <div class="project-screen-user">
+                <button id="user-profile-btn-projects" class="avatar-btn" type="button" title="User Profile">
+                    <span id="user-avatar-char-projects">U</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="project-screen-content">
+            <div class="project-create-section">
+                <h2>📂 Your Maps</h2>
+                <div class="project-create-row">
+                    <input id="new-project-name" type="text" placeholder="New map name..." maxlength="100" />
+                    <button id="new-blank-project" class="btn btn-primary" type="button">+ Blank Map</button>
+                    <button id="new-forestry-project" class="btn btn-secondary" type="button">🌳 Forestry</button>
+                </div>
+            </div>
+            <div id="project-list" class="project-grid"></div>
         </div>
     </div>
 
@@ -199,9 +195,12 @@
         <div id="map"></div>
         <div id="panel-backdrop"></div>
 
-        <!-- Top Controls: Search + Avatar + Filters -->
+        <!-- Top Controls -->
         <div id="top-controls-container">
             <div id="search-bar-row">
+                <button id="back-to-projects" class="back-btn" title="Back to Projects" type="button">←</button>
+                <span id="project-name-display" class="project-name-header">Project</span>
+
                 <div id="search-wrapper">
                     <span class="search-icon">🔍</span>
                     <input id="search-input" type="text" placeholder="Search for a place..." autocomplete="off" />
@@ -233,56 +232,31 @@
                 </div>
             </div>
 
-            <div id="filter-bar">
-                <div class="filter-pill-wrapper">
-                    <select id="filter-species" class="filter-select-pill">
-                        <option value="">All Species</option>
-                    </select>
-                </div>
-                <div class="filter-pill-wrapper">
-                    <select id="filter-health" class="filter-select-pill">
-                        <option value="">All Health</option>
-                        <option value="Healthy">🟢 Healthy</option>
-                        <option value="Diseased">🟡 Diseased</option>
-                        <option value="Dead">🔴 Dead</option>
-                    </select>
-                </div>
-                <button id="clear-filters" type="button">✕ Clear</button>
-            </div>
-
             <div id="search-results"></div>
         </div>
 
-        <!-- New Tree Form Panel -->
-        <div id="form-panel" class="panel">
-            <div class="bottom-sheet-handle"></div>
-            <h3>🌳 New Tree</h3>
-            <div class="form-coordinates-display" onclick="window.copyText(document.getElementById('new-tree-coords').textContent)" title="Click to copy coordinates">
-                <span>📍 Location:</span>
-                <span id="new-tree-coords" class="coords-value">—</span>
+        <!-- Layer Manager (Left sidebar) -->
+        <div id="layer-panel">
+            <div class="layer-panel-header">
+                <h3>🗂️ Layers</h3>
+                <button id="add-layer-btn" class="layer-add-btn" type="button" title="Add Layer">+</button>
             </div>
-            <label>Species
-                <input id="species" type="text" placeholder="e.g. Narra, Pine, Mahogany" maxlength="100" />
-            </label>
-            <label>DBH (cm)
-                <input id="dbh" type="number" step="0.1" min="0" max="500" placeholder="e.g. 32.5" />
-                <span class="field-hint">Diameter at breast height (0–500 cm)</span>
-            </label>
-            <label>Height (m)
-                <input id="height" type="number" step="0.1" min="0" max="150" placeholder="e.g. 15.2" />
-                <span class="field-hint">Total height (0–150 m)</span>
-            </label>
-            <label>Elevation (m)
-                <input id="elevation" type="number" step="0.1" readonly placeholder="Fetching..." />
-                <span class="field-hint">Auto-fetched altitude</span>
-            </label>
-            <label>Health Status
-                <select id="health">
-                    <option>Healthy</option>
-                    <option>Diseased</option>
-                    <option>Dead</option>
-                </select>
-            </label>
+            <div id="layer-list" class="layer-list"></div>
+            <div class="active-layer-indicator">
+                <small>Active:</small>
+                <span id="active-layer-name">—</span>
+            </div>
+        </div>
+
+        <!-- Feature Form Panel -->
+        <div id="feature-form-panel" class="panel">
+            <div class="bottom-sheet-handle"></div>
+            <h3 id="feature-form-title">📍 New Feature</h3>
+            <div class="form-coordinates-display" onclick="window.copyText(document.getElementById('new-feature-coords').textContent)" title="Click to copy coordinates">
+                <span>📍 Location:</span>
+                <span id="new-feature-coords" class="coords-value">—</span>
+            </div>
+            <div id="feature-form-fields"></div>
             <label>Photo
                 <div class="file-input-wrapper">
                     <div class="file-input-label" id="file-label">📷 Tap to attach photo</div>
@@ -290,79 +264,39 @@
                 </div>
             </label>
             <div id="photo-preview"><img id="photo-preview-img" src="" alt="preview" /></div>
-            <label>Notes
-                <textarea id="notes" rows="2" placeholder="Optional observations..."></textarea>
-            </label>
             <div class="btn-row">
-                <button id="save-btn" class="btn btn-primary">Save Tree</button>
-                <button id="cancel-btn" class="btn btn-secondary">Cancel</button>
+                <button id="save-feature-btn" class="btn btn-primary">Save Feature</button>
+                <button id="cancel-feature-btn" class="btn btn-secondary">Cancel</button>
             </div>
         </div>
 
-        <!-- New Plot Form Panel -->
-        <div id="plot-form-panel" class="panel">
-            <div class="bottom-sheet-handle"></div>
-            <h3>📐 New Sample Plot</h3>
-            <label>Plot Name
-                <input id="plot-name" type="text" placeholder="e.g. Plot A-1" />
-            </label>
-            <label>Notes
-                <textarea id="plot-notes" rows="2" placeholder="Optional notes..."></textarea>
-            </label>
-            <div class="btn-row">
-                <button id="save-plot-btn" class="btn btn-primary">Save Plot</button>
-                <button id="cancel-plot-btn" class="btn btn-secondary">Cancel</button>
-            </div>
-        </div>
-
-        <!-- Edit Tree Panel (#15) -->
+        <!-- Edit Feature Panel -->
         <div id="edit-panel" class="panel">
             <div class="bottom-sheet-handle"></div>
-            <h3>✏️ Edit Tree</h3>
-            <div class="form-coordinates-display" onclick="window.copyText(document.getElementById('edit-tree-coords').textContent)" title="Click to copy coordinates">
+            <h3 id="edit-form-title">✏️ Edit Feature</h3>
+            <div class="form-coordinates-display" onclick="window.copyText(document.getElementById('edit-feature-coords').textContent)" title="Click to copy coordinates">
                 <span>📍 Location:</span>
-                <span id="edit-tree-coords" class="coords-value">—</span>
+                <span id="edit-feature-coords" class="coords-value">—</span>
             </div>
-            <label>Species
-                <input id="edit-species" type="text" placeholder="e.g. Narra, Pine, Mahogany" maxlength="100" />
-            </label>
-            <label>DBH (cm)
-                <input id="edit-dbh" type="number" step="0.1" min="0" max="500" placeholder="e.g. 32.5" />
-            </label>
-            <label>Height (m)
-                <input id="edit-height" type="number" step="0.1" min="0" max="150" placeholder="e.g. 15.2" />
-            </label>
-            <label>Elevation (m)
-                <input id="edit-elevation" type="number" step="0.1" readonly placeholder="Auto-fetched" />
-            </label>
-            <label>Health Status
-                <select id="edit-health">
-                    <option>Healthy</option>
-                    <option>Diseased</option>
-                    <option>Dead</option>
-                </select>
-            </label>
+            <div id="edit-form-fields"></div>
             <label>Update Photo
                 <div class="file-input-wrapper">
                     <div class="file-input-label" id="edit-file-label">📷 Tap to change photo</div>
                     <input id="edit-photo" type="file" accept="image/*" capture="environment" />
                 </div>
             </label>
-            <label>Notes
-                <textarea id="edit-notes" rows="2" placeholder="Optional observations..."></textarea>
-            </label>
             <div class="btn-row">
-                <button id="save-edit-btn" class="btn btn-primary">Update Tree</button>
+                <button id="save-edit-btn" class="btn btn-primary">Update Feature</button>
                 <button id="cancel-edit-btn" class="btn btn-secondary">Cancel</button>
             </div>
         </div>
 
-        <!-- Export Panel (#12) -->
+        <!-- Export Panel -->
         <div id="export-panel" class="panel">
             <div class="bottom-sheet-handle"></div>
             <h3>📤 Export Data</h3>
-            <p style="font-size: 13px; color: #a0b8a0; margin-bottom: 16px;">
-                Download your tree inventory and plot data.
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+                Download your project data in various formats.
             </p>
             <div class="export-format-grid">
                 <div class="format-card" data-format="csv">
@@ -383,29 +317,29 @@
             </div>
         </div>
 
-        <!-- Import Panel (#16) -->
+        <!-- Import Panel -->
         <div id="import-panel" class="panel">
             <div class="bottom-sheet-handle"></div>
-            <h3>📥 Import Trees (CSV)</h3>
-            <p style="font-size: 12px; color: #7a9a7a; margin-bottom: 12px;">
-                Upload a CSV with columns: latitude, longitude, species, dbh, height, health, notes
+            <h3>📥 Import Features</h3>
+            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+                Upload a CSV (with latitude, longitude columns) or GeoJSON file.
             </p>
-            <label>Select CSV File
+            <label>Select File
                 <div class="file-input-wrapper">
-                    <div class="file-input-label" id="import-file-label">📄 Choose CSV file</div>
-                    <input id="import-file" type="file" accept=".csv,text/csv" />
+                    <div class="file-input-label" id="import-file-label">📄 Choose CSV or GeoJSON</div>
+                    <input id="import-file" type="file" accept=".csv,.geojson,.json,text/csv,application/geo+json" />
                 </div>
             </label>
             <div id="import-stats" class="import-stats" style="display:none"></div>
             <div id="import-errors" class="import-errors" style="display:none"></div>
             <div id="import-preview"></div>
             <div class="btn-row">
-                <button id="confirm-import-btn" class="btn btn-primary" disabled>Import Trees</button>
+                <button id="confirm-import-btn" class="btn btn-primary" disabled>Import Features</button>
                 <button id="cancel-import-btn" class="btn btn-secondary">Cancel</button>
             </div>
         </div>
 
-        <!-- Dashboard Sidebar (#5) -->
+        <!-- Dashboard Sidebar -->
         <button id="dashboard-toggle" title="Dashboard">📊</button>
         <div id="dashboard-panel">
             <div class="dashboard-header">
@@ -415,40 +349,33 @@
 
             <div class="stats-grid">
                 <div class="stat-card">
-                    <span class="stat-value" id="stat-total-trees">0</span>
-                    <span class="stat-label">Trees</span>
+                    <span class="stat-value" id="stat-total-features">0</span>
+                    <span class="stat-label">Features</span>
                 </div>
                 <div class="stat-card">
-                    <span class="stat-value" id="stat-total-species">0</span>
-                    <span class="stat-label">Species</span>
+                    <span class="stat-value" id="stat-total-layers">0</span>
+                    <span class="stat-label">Layers</span>
                 </div>
                 <div class="stat-card">
-                    <span class="stat-value" id="stat-total-plots">0</span>
-                    <span class="stat-label">Plots</span>
+                    <span class="stat-value" id="stat-total-points">0</span>
+                    <span class="stat-label">Points</span>
                 </div>
                 <div class="stat-card">
-                    <span class="stat-value" id="stat-total-ba">0 m²</span>
-                    <span class="stat-label">Total Basal Area</span>
+                    <span class="stat-value" id="stat-total-polygons">0</span>
+                    <span class="stat-label">Areas</span>
                 </div>
             </div>
 
             <div class="dashboard-section">
-                <h3>Species Distribution</h3>
+                <h3>Layer Distribution</h3>
                 <div class="chart-container">
-                    <canvas id="species-chart" height="180"></canvas>
+                    <canvas id="layer-chart" height="180"></canvas>
                 </div>
             </div>
 
             <div class="dashboard-section">
-                <h3>Health Status</h3>
-                <div class="chart-container">
-                    <canvas id="health-chart" height="150"></canvas>
-                </div>
-            </div>
-
-            <div class="dashboard-section">
-                <h3>Trees per Plot</h3>
-                <div class="stats-grid" id="plot-tree-counts"></div>
+                <h3>Per Layer</h3>
+                <div class="stats-grid" id="layer-feature-counts"></div>
             </div>
 
             <div class="dashboard-actions">
@@ -456,7 +383,7 @@
                     <span class="action-icon">📤</span> Export Data
                 </button>
                 <button class="dashboard-action-btn" id="btn-import">
-                    <span class="action-icon">📥</span> Import CSV
+                    <span class="action-icon">📥</span> Import Data
                 </button>
             </div>
         </div>
@@ -469,7 +396,7 @@
             </button>
         </div>
 
-        <!-- GPS Button (#6) -->
+        <!-- GPS Button -->
         <button id="gps-btn" title="My Location">📍</button>
 
         <!-- Status Indicators -->
@@ -482,16 +409,16 @@
 
     <!-- ==================== Overlays ==================== -->
 
-    <!-- Toast Container (#3) -->
+    <!-- Toast Container -->
     <div id="toast-container"></div>
 
-    <!-- Loading Overlay (#9) -->
+    <!-- Loading Overlay -->
     <div id="loading-overlay">
         <div class="loading-spinner"></div>
         <div class="loading-text">Loading...</div>
     </div>
 
-    <!-- Confirmation Modal (#11) -->
+    <!-- Confirmation Modal -->
     <div id="confirm-modal">
         <div class="confirm-card">
             <h3>Confirm Action</h3>
@@ -503,53 +430,17 @@
         </div>
     </div>
 
-    <!-- Lightbox (#17) -->
+    <!-- Lightbox -->
     <div id="lightbox">
         <button id="lightbox-close">✕</button>
         <img src="" alt="Full size photo" />
     </div>
 
-    <!-- QR Tag Modal -->
-    <div id="qr-modal">
-        <div class="qr-modal-card">
-            <div class="qr-modal-header">
-                <h3>🏷️ Tree QR Tag</h3>
-                <button class="qr-modal-close" id="qr-modal-close">✕</button>
-            </div>
-
-            <!-- Printable tag area -->
-            <div class="qr-tag-printable" id="qr-tag-printable">
-                <div class="qr-tag-top">
-                    <span class="qr-tag-icon">🌳</span>
-                    <div class="qr-tag-title-block">
-                        <div class="qr-tag-label">TREE TAG</div>
-                        <div class="qr-tag-id" id="qr-tag-id">#—</div>
-                    </div>
-                </div>
-                <div class="qr-tag-info">
-                    <div class="qr-tag-row"><span>Species</span><strong id="qr-tag-species">—</strong></div>
-                    <div class="qr-tag-row"><span>Health</span><strong id="qr-tag-health">—</strong></div>
-                    <div class="qr-tag-row"><span>DBH</span><strong id="qr-tag-dbh">—</strong></div>
-                    <div class="qr-tag-row"><span>Height</span><strong id="qr-tag-height">—</strong></div>
-                </div>
-                <div class="qr-code-wrapper">
-                    <div id="qr-code-canvas"></div>
-                </div>
-                <div class="qr-tag-footer">Scan to open tree record</div>
-            </div>
-
-            <div class="qr-modal-actions">
-                <button class="btn btn-primary" id="qr-print-btn">🖨️ Print Tag</button>
-                <button class="btn btn-secondary" id="qr-modal-cancel">Close</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Install Banner (#24) -->
+    <!-- Install Banner -->
     <div id="install-banner">
-        <span class="install-icon">🌳</span>
+        <span class="install-icon">🌐</span>
         <div class="install-text">
-            <strong>Install Tree Mapper</strong>
+            <strong>Install OpenGIS</strong>
             <small>Add to home screen for offline access</small>
         </div>
         <div class="install-actions">
@@ -568,11 +459,8 @@
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-
-    <!-- QRCode.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- Chart.js (deferred) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" defer></script>
 
     <!-- App Entry Point -->
     <script type="module" src="js/app.js"></script>

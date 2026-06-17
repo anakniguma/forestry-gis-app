@@ -1,11 +1,11 @@
 // ========================================
-// Forestry Tree Mapper — UI Components
+// OpenGIS — UI Components
 // ========================================
 
-import { state } from './config.js';
-import { sanitize, calculateBasalArea, calculateVolume, formatNumber, countTreesInPolygon } from './utils.js';
+import { state, LAYER_COLORS, LAYER_ICONS } from './config.js';
+import { sanitize, formatNumber } from './utils.js';
 
-// --- Toast Notification System (#3) ---
+// --- Toast Notification System ---
 let toastCounter = 0;
 
 export function showToast(message, type = 'success', duration = 4000) {
@@ -38,7 +38,7 @@ function removeToast(toast) {
     setTimeout(() => toast.remove(), 300);
 }
 
-// --- Loading Overlay (#9) ---
+// --- Loading Overlay ---
 export function showLoading(message = 'Loading...') {
     const overlay = document.getElementById('loading-overlay');
     const text = overlay?.querySelector('.loading-text');
@@ -53,7 +53,7 @@ export function hideLoading() {
     if (overlay) overlay.classList.remove('active');
 }
 
-// --- Confirmation Modal (#11) ---
+// --- Confirmation Modal ---
 let confirmCallback = null;
 
 export function showConfirm(title, message, onConfirm) {
@@ -90,7 +90,7 @@ export function initConfirmModal() {
     });
 }
 
-// --- Status Indicator (enhanced) ---
+// --- Status Indicator ---
 export function showStatus(message, type) {
     const indicator = document.getElementById('status-indicator');
     const text = document.getElementById('status-text');
@@ -118,7 +118,7 @@ export function updateQueueBadge() {
     }
 }
 
-// --- Panel Management (#4) ---
+// --- Panel Management ---
 export function openPanel(panel) {
     if (!panel) return;
     panel.style.display = 'block';
@@ -147,7 +147,7 @@ export function closeAllPanels() {
     if (backdrop) backdrop.classList.remove('active');
 }
 
-// --- Dashboard (#5) ---
+// --- Dashboard ---
 export function initDashboard() {
     const toggle = document.getElementById('dashboard-toggle');
     const panel = document.getElementById('dashboard-panel');
@@ -158,134 +158,86 @@ export function initDashboard() {
 }
 
 export function updateDashboard() {
-    const trees = state.allTreeMarkers.map(m => m.tree);
-    const plots = state.allPlotPolygons;
+    const features = state.allFeatures.map(f => f.feature);
+    const layers = state.layers;
 
-    // Stats cards
     const setVal = (id, val) => {
         const el = document.getElementById(id);
         if (el) el.textContent = val;
     };
 
-    setVal('stat-total-trees', trees.length);
-    setVal('stat-total-species', state.allSpecies.size);
-    setVal('stat-total-plots', plots.length);
+    // Total features
+    setVal('stat-total-features', features.length);
+    setVal('stat-total-layers', layers.length);
 
-    // Total basal area
-    const totalBA = trees.reduce((sum, t) => sum + calculateBasalArea(t.dbh), 0);
-    setVal('stat-total-ba', formatNumber(totalBA, 2) + ' m²');
+    // Count by geometry type
+    const points = features.filter(f => f.geometry_type === 'Point').length;
+    const lines = features.filter(f => f.geometry_type === 'LineString').length;
+    const polygons = features.filter(f => f.geometry_type === 'Polygon').length;
+    setVal('stat-total-points', points);
+    setVal('stat-total-lines', lines);
+    setVal('stat-total-polygons', polygons);
 
-    // Health counts
-    const healthCounts = { Healthy: 0, Diseased: 0, Dead: 0 };
-    trees.forEach(t => {
-        if (healthCounts[t.health] !== undefined) healthCounts[t.health]++;
-    });
-
-    // Species chart
-    const speciesCounts = {};
-    trees.forEach(t => {
-        const sp = t.species || 'Unknown';
-        speciesCounts[sp] = (speciesCounts[sp] || 0) + 1;
-    });
-
-    const sortedSpecies = Object.entries(speciesCounts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 8);
-
-    // Update charts if Chart.js is available
-    if (typeof Chart !== 'undefined') {
-        updateSpeciesChart(sortedSpecies);
-        updateHealthChart(healthCounts);
-    }
-
-    // Trees in plots (#32)
-    const plotInfoContainer = document.getElementById('plot-tree-counts');
-    if (plotInfoContainer) {
-        plotInfoContainer.innerHTML = '';
-        plots.forEach(polygon => {
-            const plotData = polygon.plotData;
-            if (!plotData) return;
-            const coords = plotData.coordinates;
-            const treesInPlot = countTreesInPolygon(trees, coords);
+    // Per-layer counts
+    const layerCountsContainer = document.getElementById('layer-feature-counts');
+    if (layerCountsContainer) {
+        layerCountsContainer.innerHTML = '';
+        layers.forEach(layer => {
+            const count = features.filter(f => f.layer_id === layer.id).length;
             const div = document.createElement('div');
             div.className = 'stat-card';
-            div.innerHTML = `<span class="stat-value">${treesInPlot.length}</span>
-                <span class="stat-label">${sanitize(plotData.name || 'Unnamed Plot')}</span>`;
-            plotInfoContainer.appendChild(div);
+            div.innerHTML = `
+                <span class="stat-value" style="color: ${layer.color}">${count}</span>
+                <span class="stat-label">${layer.icon || '📍'} ${sanitize(layer.name)}</span>
+            `;
+            layerCountsContainer.appendChild(div);
         });
+    }
+
+    // Layer distribution chart
+    if (typeof Chart !== 'undefined' && layers.length > 0) {
+        updateLayerChart(layers, features);
     }
 }
 
-function updateSpeciesChart(speciesData) {
-    const canvas = document.getElementById('species-chart');
+function updateLayerChart(layers, features) {
+    const canvas = document.getElementById('layer-chart');
     if (!canvas) return;
 
-    if (state.speciesChartInstance) state.speciesChartInstance.destroy();
+    if (state.chartInstance) state.chartInstance.destroy();
 
-    const colors = ['#7ddf7e', '#5cb85c', '#3d8a3e', '#2d6a2e', '#ffcc66', '#ff9966', '#6cb4ee', '#c090e0'];
+    const data = layers.map(l => ({
+        name: l.name,
+        count: features.filter(f => f.layer_id === l.id).length,
+        color: l.color,
+    }));
 
-    state.speciesChartInstance = new Chart(canvas, {
+    state.chartInstance = new Chart(canvas, {
         type: 'doughnut',
         data: {
-            labels: speciesData.map(s => s[0]),
+            labels: data.map(d => d.name),
             datasets: [{
-                data: speciesData.map(s => s[1]),
-                backgroundColor: colors.slice(0, speciesData.length),
-                borderColor: 'rgba(15, 26, 15, 0.8)',
+                data: data.map(d => d.count),
+                backgroundColor: data.map(d => d.color + '99'), // semi-transparent
+                borderColor: data.map(d => d.color),
                 borderWidth: 2
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            animation: false, // No animation — better for low-end devices
             plugins: {
                 legend: {
                     position: 'bottom',
-                    labels: { color: '#a0b8a0', font: { family: 'Inter', size: 10 }, padding: 8 }
+                    labels: { color: '#94a3b8', font: { family: 'Inter', size: 10 }, padding: 8 }
                 }
             }
         }
     });
 }
 
-function updateHealthChart(healthCounts) {
-    const canvas = document.getElementById('health-chart');
-    if (!canvas) return;
-
-    if (state.healthChartInstance) state.healthChartInstance.destroy();
-
-    state.healthChartInstance = new Chart(canvas, {
-        type: 'bar',
-        data: {
-            labels: ['Healthy', 'Diseased', 'Dead'],
-            datasets: [{
-                data: [healthCounts.Healthy, healthCounts.Diseased, healthCounts.Dead],
-                backgroundColor: ['rgba(45, 106, 46, 0.6)', 'rgba(180, 130, 40, 0.6)', 'rgba(220, 80, 60, 0.6)'],
-                borderColor: ['#7ddf7e', '#ffcc66', '#ff8a7a'],
-                borderWidth: 1,
-                borderRadius: 4
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                x: {
-                    ticks: { color: '#a0b8a0', font: { family: 'Inter', size: 11 } },
-                    grid: { display: false }
-                },
-                y: {
-                    beginAtZero: true,
-                    ticks: { color: '#7a9a7a', font: { family: 'Inter', size: 10 }, stepSize: 1 },
-                    grid: { color: 'rgba(45, 106, 46, 0.1)' }
-                }
-            }
-        }
-    });
-}
-
-// --- PWA Install Prompt (#24) ---
+// --- PWA Install Prompt ---
 export function initInstallPrompt() {
     window.addEventListener('beforeinstallprompt', (e) => {
         e.preventDefault();
@@ -320,72 +272,7 @@ export function initInstallPrompt() {
     }
 }
 
-// --- Species Auto-Suggest (#35) ---
-export function initAutoSuggest(inputId, getSpecies) {
-    const input = document.getElementById(inputId);
-    if (!input) return;
-
-    const wrapper = input.parentElement;
-    wrapper.classList.add('auto-suggest-wrapper');
-
-    const list = document.createElement('div');
-    list.className = 'auto-suggest-list';
-    list.id = inputId + '-suggest';
-    wrapper.appendChild(list);
-
-    let highlightIdx = -1;
-
-    input.addEventListener('input', () => {
-        const val = input.value.trim().toLowerCase();
-        if (!val) { list.classList.remove('visible'); return; }
-
-        const species = Array.from(getSpecies());
-        const matches = species.filter(s => s.toLowerCase().includes(val)).slice(0, 8);
-
-        if (matches.length === 0) { list.classList.remove('visible'); return; }
-
-        list.innerHTML = '';
-        highlightIdx = -1;
-        matches.forEach((s, idx) => {
-            const item = document.createElement('div');
-            item.className = 'auto-suggest-item';
-            item.textContent = s;
-            item.addEventListener('click', () => {
-                input.value = s;
-                list.classList.remove('visible');
-            });
-            list.appendChild(item);
-        });
-        list.classList.add('visible');
-    });
-
-    input.addEventListener('keydown', (e) => {
-        const items = list.querySelectorAll('.auto-suggest-item');
-        if (!items.length || !list.classList.contains('visible')) return;
-
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            highlightIdx = Math.min(highlightIdx + 1, items.length - 1);
-            items.forEach((it, i) => it.classList.toggle('highlighted', i === highlightIdx));
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            highlightIdx = Math.max(highlightIdx - 1, 0);
-            items.forEach((it, i) => it.classList.toggle('highlighted', i === highlightIdx));
-        } else if (e.key === 'Enter' && highlightIdx >= 0) {
-            e.preventDefault();
-            input.value = items[highlightIdx].textContent;
-            list.classList.remove('visible');
-        } else if (e.key === 'Escape') {
-            list.classList.remove('visible');
-        }
-    });
-
-    document.addEventListener('click', (e) => {
-        if (!wrapper.contains(e.target)) list.classList.remove('visible');
-    });
-}
-
-// --- Lightbox (#17) ---
+// --- Lightbox ---
 export function initLightbox() {
     const lightbox = document.getElementById('lightbox');
     if (!lightbox) return;
@@ -405,7 +292,7 @@ export function openLightbox(src) {
     lightbox.classList.add('active');
 }
 
-// --- Mobile Swipe-to-Dismiss (#21) ---
+// --- Mobile Swipe-to-Dismiss ---
 export function initSwipeDismiss() {
     document.querySelectorAll('.panel').forEach(panel => {
         let startY = 0;
@@ -437,7 +324,6 @@ export function initSwipeDismiss() {
             const diff = currentY - startY;
 
             if (diff > 100) {
-                // Dismiss
                 closePanel(panel);
                 if (state.currentLayer) {
                     state.map?.removeLayer(state.currentLayer);
@@ -446,6 +332,185 @@ export function initSwipeDismiss() {
             }
             panel.style.transform = '';
         });
+    });
+}
+
+// --- Dynamic Form Generator ---
+export function generateFormFields(container, schema, values = {}) {
+    if (!container || !schema) return;
+    container.innerHTML = '';
+
+    schema.forEach(field => {
+        const label = document.createElement('label');
+        label.textContent = field.label;
+
+        let input;
+        if (field.type === 'select' && field.options) {
+            input = document.createElement('select');
+            input.id = `field-${field.key}`;
+            field.options.forEach(opt => {
+                const option = document.createElement('option');
+                option.value = opt;
+                option.textContent = opt;
+                input.appendChild(option);
+            });
+            if (values[field.key]) input.value = values[field.key];
+        } else if (field.type === 'textarea') {
+            input = document.createElement('textarea');
+            input.id = `field-${field.key}`;
+            input.rows = 2;
+            input.placeholder = `Enter ${field.label.toLowerCase()}...`;
+            if (values[field.key]) input.value = values[field.key];
+        } else {
+            input = document.createElement('input');
+            input.id = `field-${field.key}`;
+            input.type = field.type === 'number' ? 'number' : 'text';
+            input.placeholder = `Enter ${field.label.toLowerCase()}...`;
+            if (field.type === 'number') {
+                if (field.min != null) input.min = field.min;
+                if (field.max != null) input.max = field.max;
+                if (field.step != null) input.step = field.step;
+            }
+            if (field.readonly) input.readOnly = true;
+            if (field.required) input.required = true;
+            if (values[field.key] != null) input.value = values[field.key];
+            if (field.type === 'number') {
+                input.maxLength = 20;
+            } else {
+                input.maxLength = 200;
+            }
+        }
+
+        label.appendChild(input);
+        container.appendChild(label);
+    });
+}
+
+export function readFormFields(schema) {
+    const values = {};
+    if (!schema) return values;
+    schema.forEach(field => {
+        const el = document.getElementById(`field-${field.key}`);
+        if (!el) return;
+        let val = el.value;
+        if (field.type === 'number' && val !== '') {
+            val = parseFloat(val);
+            if (isNaN(val)) val = '';
+        }
+        values[field.key] = val;
+    });
+    return values;
+}
+
+// --- Layer Manager UI ---
+export function renderLayerList(layers, onToggle, onSelect, onDelete) {
+    const container = document.getElementById('layer-list');
+    if (!container) return;
+    container.innerHTML = '';
+
+    if (layers.length === 0) {
+        container.innerHTML = '<div class="layer-empty">No layers yet. Create one to start mapping!</div>';
+        return;
+    }
+
+    layers.forEach(layer => {
+        const div = document.createElement('div');
+        div.className = 'layer-item' + (layer.id === state.activeLayerId ? ' active' : '');
+        div.dataset.layerId = layer.id;
+
+        const featureCount = state.allFeatures.filter(f => f.feature.layer_id === layer.id).length;
+
+        div.innerHTML = `
+            <button class="layer-visibility-btn ${layer.visible !== false ? 'visible' : ''}" 
+                    data-layer-id="${layer.id}" title="Toggle visibility" type="button">
+                ${layer.visible !== false ? '👁️' : '👁️‍🗨️'}
+            </button>
+            <div class="layer-color-dot" style="background: ${layer.color}"></div>
+            <div class="layer-info">
+                <span class="layer-name">${layer.icon || '📍'} ${sanitize(layer.name)}</span>
+                <span class="layer-count">${featureCount} feature${featureCount !== 1 ? 's' : ''}</span>
+            </div>
+            <button class="layer-delete-btn" data-layer-id="${layer.id}" title="Delete layer" type="button">🗑️</button>
+        `;
+
+        // Click to select as active layer
+        div.addEventListener('click', (e) => {
+            if (e.target.closest('.layer-visibility-btn') || e.target.closest('.layer-delete-btn')) return;
+            if (onSelect) onSelect(layer.id);
+        });
+
+        // Toggle visibility
+        const visBtn = div.querySelector('.layer-visibility-btn');
+        visBtn.addEventListener('click', () => {
+            if (onToggle) onToggle(layer.id);
+        });
+
+        // Delete
+        const delBtn = div.querySelector('.layer-delete-btn');
+        delBtn.addEventListener('click', () => {
+            if (onDelete) onDelete(layer.id);
+        });
+
+        container.appendChild(div);
+    });
+}
+
+// --- Project Cards ---
+export function renderProjectCards(projects, onOpen, onDelete) {
+    const container = document.getElementById('project-list');
+    if (!container) return;
+    container.innerHTML = '';
+
+    if (projects.length === 0) {
+        container.innerHTML = `
+            <div class="project-empty">
+                <span class="project-empty-icon">🗺️</span>
+                <p>No projects yet</p>
+                <small>Create your first map to get started</small>
+            </div>
+        `;
+        return;
+    }
+
+    projects.forEach(project => {
+        const card = document.createElement('div');
+        card.className = 'project-card';
+
+        const date = project.updated_at
+            ? new Date(project.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+            : '';
+
+        card.innerHTML = `
+            <div class="project-card-header">
+                <span class="project-card-icon">🗺️</span>
+                <div class="project-card-info">
+                    <h3>${sanitize(project.name)}</h3>
+                    <small>${sanitize(project.description || 'No description')}</small>
+                </div>
+                ${project.is_public ? '<span class="project-public-badge" title="Shared publicly">🔗</span>' : ''}
+            </div>
+            <div class="project-card-footer">
+                <span class="project-card-date">${date}</span>
+                <div class="project-card-actions">
+                    <button class="project-open-btn" data-id="${project.id}" type="button">Open</button>
+                    <button class="project-delete-btn" data-id="${project.id}" type="button" title="Delete">🗑️</button>
+                </div>
+            </div>
+        `;
+
+        card.querySelector('.project-open-btn').addEventListener('click', () => onOpen(project));
+        card.querySelector('.project-delete-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            onDelete(project);
+        });
+
+        // Also open on card click
+        card.addEventListener('click', (e) => {
+            if (e.target.closest('.project-delete-btn')) return;
+            onOpen(project);
+        });
+
+        container.appendChild(card);
     });
 }
 

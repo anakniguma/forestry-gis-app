@@ -1,25 +1,28 @@
 // ========================================
-// Forestry Tree Mapper — Main Application
+// OpenGIS — Main Application
 // ========================================
 
-import { supabase, state, MAX_PHOTO_SIZE, SEARCH_DEBOUNCE_MS } from './config.js';
-import { sanitize, debounce, validateTreeInput, haptic, parseCSVImport, treeIdToCode, treeCodeToId, fetchElevation, haversineDistance } from './utils.js';
+import { supabase, state, MAX_PHOTO_SIZE, SEARCH_DEBOUNCE_MS, LAYER_COLORS, DEFAULT_SCHEMA, IS_LOW_END } from './config.js';
+import { sanitize, debounce, validateFeatureInput, haptic, parseCSVImport, parseGeoJSONImport, fetchElevation, haversineDistance, featureIdToCode, featureCodeToId } from './utils.js';
 import {
     showToast, showLoading, hideLoading, showConfirm, initConfirmModal,
     showStatus, updateQueueBadge, openPanel, closePanel, closeAllPanels,
-    initDashboard, updateDashboard, initInstallPrompt, initAutoSuggest,
-    initLightbox, openLightbox, initSwipeDismiss
+    initDashboard, updateDashboard, initInstallPrompt,
+    initLightbox, openLightbox, initSwipeDismiss,
+    generateFormFields, readFormFields, renderLayerList, renderProjectCards
 } from './ui.js';
 import {
-    uploadPhoto, insertTree, updateTree, deleteTree as deleteTreeDB,
-    insertPlot, updatePlot, deletePlot as deletePlotDB,
-    loadAllTrees, loadPlots, queueOfflineAction, flushOfflineQueue,
-    exportData, importTreesFromCSV, initRealtime
+    uploadPhoto, insertFeature, updateFeature, deleteFeature as deleteFeatureDB,
+    createLayer, updateLayer, deleteLayer as deleteLayerDB,
+    loadProjects, createProject, deleteProject as deleteProjectDB,
+    loadLayers, loadFeatures, queueOfflineAction, flushOfflineQueue,
+    exportData, importFeaturesFromCSV, initRealtime,
+    createBlankProject, createForestryProject, toggleProjectShare
 } from './data.js';
 import {
     initMap, addTileLayers, addDrawControls, initGPS,
-    createTreeMarker, createClusterGroup, initHeatmap,
-    updateHeatmap, toggleHeatmap, createPlotPolygon
+    createClusterGroup, initHeatmap,
+    updateHeatmap, toggleHeatmap, createMapLayer
 } from './map.js';
 
 // ========================================
@@ -27,6 +30,7 @@ import {
 // ========================================
 const authScreen = document.getElementById('auth-screen');
 const appContainer = document.getElementById('app-container');
+const projectScreen = document.getElementById('project-screen');
 const tabLogin = document.getElementById('tab-login');
 const tabSignup = document.getElementById('tab-signup');
 const loginForm = document.getElementById('login-form');
@@ -38,22 +42,18 @@ const loginSubmit = document.getElementById('login-submit');
 const signupSubmit = document.getElementById('signup-submit');
 const userEmailDisplay = document.getElementById('user-dropdown-email');
 
-const formPanel = document.getElementById('form-panel');
-const plotFormPanel = document.getElementById('plot-form-panel');
+const featureFormPanel = document.getElementById('feature-form-panel');
 const editPanel = document.getElementById('edit-panel');
 const importPanel = document.getElementById('import-panel');
 const exportPanel = document.getElementById('export-panel');
 
-const filterSpecies = document.getElementById('filter-species');
-const filterHealth = document.getElementById('filter-health');
-const clearFiltersBtn = document.getElementById('clear-filters');
 const photoInput = document.getElementById('photo');
 const fileLabel = document.getElementById('file-label');
 const photoPreview = document.getElementById('photo-preview');
 const photoPreviewImg = document.getElementById('photo-preview-img');
 
 // ========================================
-// Authentication (#30 session handling)
+// Authentication
 // ========================================
 tabLogin.addEventListener('click', () => {
     tabLogin.classList.add('active');
@@ -141,13 +141,12 @@ supabase.auth.onAuthStateChange((event, session) => {
         if (avatarCharLarge) avatarCharLarge.textContent = initial;
 
         authScreen.classList.add('hidden');
-        appContainer.classList.add('visible');
-        initApp();
+        showProjectScreen();
     } else {
         state.currentUser = null;
         authScreen.classList.remove('hidden');
         appContainer.classList.remove('visible');
-        clearAppState();
+        projectScreen.classList.remove('visible');
         if (window.startAuthParticles) {
             window.startAuthParticles();
         }
@@ -157,15 +156,17 @@ supabase.auth.onAuthStateChange((event, session) => {
 // ========================================
 // Auth Screen Visual Enhancements
 // ========================================
-
-// --- Forest Particles Animation ---
 function initAuthParticles() {
     const canvas = document.getElementById('auth-particles-canvas');
     if (!canvas) return;
+
+    // Skip particles on low-end devices
+    if (IS_LOW_END) return;
+
     const ctx = canvas.getContext('2d');
     let animationFrameId = null;
     let particles = [];
-    const maxParticles = 50;
+    const maxParticles = 40;
 
     function resizeCanvas() {
         const rect = canvas.getBoundingClientRect();
@@ -182,13 +183,13 @@ function initAuthParticles() {
             particles.push({
                 x: Math.random() * width,
                 y: Math.random() * height,
-                size: Math.random() * 1.8 + 0.8,
-                speedY: -(Math.random() * 0.35 + 0.12),
-                swayRange: Math.random() * 10 + 4,
-                swaySpeed: Math.random() * 0.015 + 0.005,
+                size: Math.random() * 1.5 + 0.6,
+                speedY: -(Math.random() * 0.3 + 0.1),
+                swayRange: Math.random() * 8 + 3,
+                swaySpeed: Math.random() * 0.012 + 0.004,
                 angle: Math.random() * Math.PI * 2,
-                opacity: Math.random() * 0.45 + 0.2,
-                pulseSpeed: Math.random() * 0.02 + 0.008,
+                opacity: Math.random() * 0.4 + 0.15,
+                pulseSpeed: Math.random() * 0.015 + 0.006,
                 pulseAngle: Math.random() * Math.PI * 2
             });
         }
@@ -206,19 +207,16 @@ function initAuthParticles() {
 
         particles.forEach(p => {
             const currentX = p.x + Math.sin(p.angle) * p.swayRange;
-            const currentOpacity = Math.max(0.08, p.opacity + Math.sin(p.pulseAngle) * 0.12);
+            const currentOpacity = Math.max(0.05, p.opacity + Math.sin(p.pulseAngle) * 0.1);
 
-            const grad = ctx.createRadialGradient(
-                currentX, p.y, 0,
-                currentX, p.y, p.size * 3.5
-            );
-            grad.addColorStop(0, `rgba(165, 245, 165, ${currentOpacity})`);
-            grad.addColorStop(0.3, `rgba(125, 223, 126, ${currentOpacity * 0.5})`);
-            grad.addColorStop(1, 'rgba(125, 223, 126, 0)');
+            const grad = ctx.createRadialGradient(currentX, p.y, 0, currentX, p.y, p.size * 3);
+            grad.addColorStop(0, `rgba(100, 180, 255, ${currentOpacity})`);
+            grad.addColorStop(0.3, `rgba(76, 154, 255, ${currentOpacity * 0.5})`);
+            grad.addColorStop(1, 'rgba(76, 154, 255, 0)');
 
             ctx.beginPath();
             ctx.fillStyle = grad;
-            ctx.arc(currentX, p.y, p.size * 3.5, 0, Math.PI * 2);
+            ctx.arc(currentX, p.y, p.size * 3, 0, Math.PI * 2);
             ctx.fill();
 
             p.y += p.speedY;
@@ -228,7 +226,7 @@ function initAuthParticles() {
             if (p.y < -15) {
                 p.y = height + 15;
                 p.x = Math.random() * width;
-                p.opacity = Math.random() * 0.45 + 0.2;
+                p.opacity = Math.random() * 0.4 + 0.15;
             }
         });
 
@@ -238,9 +236,7 @@ function initAuthParticles() {
     function start() {
         resizeCanvas();
         createParticles();
-        if (!animationFrameId) {
-            draw();
-        }
+        if (!animationFrameId) draw();
     }
 
     window.addEventListener('resize', () => {
@@ -251,13 +247,10 @@ function initAuthParticles() {
     start();
 
     window.startAuthParticles = () => {
-        if (!animationFrameId) {
-            start();
-        }
+        if (!animationFrameId) start();
     };
 }
 
-// --- Interactive Password Strength Meter ---
 function initPasswordStrength() {
     const signupPassword = document.getElementById('signup-password');
     const segments = [
@@ -271,30 +264,21 @@ function initPasswordStrength() {
     signupPassword.addEventListener('input', () => {
         const val = signupPassword.value;
         let score = 0;
-
         if (val.length >= 6) score++;
         if (val.length >= 8) score++;
         if (/[A-Z]/.test(val) && /[a-z]/.test(val)) score++;
         if (/[0-9]/.test(val)) score++;
         if (/[^A-Za-z0-9]/.test(val)) score++;
 
-        let level = 0; // 0 = none, 1 = weak, 2 = medium, 3 = strong
+        let level = 0;
         if (val.length > 0) {
-            if (score <= 2) {
-                level = 1;
-            } else if (score <= 4) {
-                level = 2;
-            } else {
-                level = 3;
-            }
+            if (score <= 2) level = 1;
+            else if (score <= 4) level = 2;
+            else level = 3;
         }
 
-        // Clear existing strength classes
-        segments.forEach(seg => {
-            seg.className = 'auth-strength-segment';
-        });
+        segments.forEach(seg => { seg.className = 'auth-strength-segment'; });
 
-        // Set strength color classes dynamically
         if (level === 1) {
             segments[0].classList.add('weak');
         } else if (level === 2) {
@@ -308,7 +292,6 @@ function initPasswordStrength() {
     });
 }
 
-// Initialize Auth Screen Animations & UI interactions
 initAuthParticles();
 initPasswordStrength();
 
@@ -323,6 +306,96 @@ window.copyText = function(text, label = 'Coordinates') {
 };
 
 // ========================================
+// Project Screen
+// ========================================
+async function showProjectScreen() {
+    projectScreen.classList.add('visible');
+    appContainer.classList.remove('visible');
+
+    showLoading('Loading your projects...');
+    try {
+        state.projects = await loadProjects();
+        renderProjectCards(
+            state.projects,
+            openProject,
+            confirmDeleteProject
+        );
+    } catch (err) {
+        console.error('Error loading projects:', err);
+        showToast('Error loading projects: ' + err.message, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+// New project buttons
+document.getElementById('new-blank-project')?.addEventListener('click', async () => {
+    const nameInput = document.getElementById('new-project-name');
+    const name = nameInput?.value?.trim() || 'Untitled Map';
+    showLoading('Creating project...');
+    try {
+        const project = await createBlankProject(name);
+        if (nameInput) nameInput.value = '';
+        showToast('Project created!', 'success');
+        openProject(project);
+    } catch (err) {
+        showToast('Error creating project: ' + err.message, 'error');
+    } finally {
+        hideLoading();
+    }
+});
+
+document.getElementById('new-forestry-project')?.addEventListener('click', async () => {
+    showLoading('Creating forestry project...');
+    try {
+        const project = await createForestryProject();
+        showToast('Forestry project created!', 'success');
+        openProject(project);
+    } catch (err) {
+        showToast('Error creating project: ' + err.message, 'error');
+    } finally {
+        hideLoading();
+    }
+});
+
+function confirmDeleteProject(project) {
+    showConfirm(
+        'Delete Project',
+        `Delete "${project.name}"? All layers and features will be permanently removed.`,
+        async () => {
+            try {
+                await deleteProjectDB(project.id);
+                state.projects = state.projects.filter(p => p.id !== project.id);
+                renderProjectCards(state.projects, openProject, confirmDeleteProject);
+                showToast('Project deleted', 'success');
+            } catch (err) {
+                showToast('Error deleting project: ' + err.message, 'error');
+            }
+        }
+    );
+}
+
+async function openProject(project) {
+    state.activeProject = project;
+    projectScreen.classList.remove('visible');
+    appContainer.classList.add('visible');
+
+    // Update project name in header
+    const projectNameEl = document.getElementById('project-name-display');
+    if (projectNameEl) projectNameEl.textContent = project.name;
+
+    await initApp();
+}
+
+// Back to projects button
+document.getElementById('back-to-projects')?.addEventListener('click', () => {
+    state.activeProject = null;
+    state.appInitialized = false;
+    clearAppState();
+    showProjectScreen();
+});
+
+// ========================================
 // App Initialization
 // ========================================
 async function initApp() {
@@ -332,30 +405,23 @@ async function initApp() {
     }
     state.appInitialized = true;
 
-    // Initialize map
     const map = initMap('map');
     addTileLayers(map);
 
-    // Drawn items layer
     state.drawnItems = new L.FeatureGroup();
     map.addLayer(state.drawnItems);
 
-    // Marker cluster group (#19)
     state.markerClusterGroup = createClusterGroup();
     if (state.markerClusterGroup) {
         map.addLayer(state.markerClusterGroup);
     }
 
-    // Draw controls
     addDrawControls(map, state.drawnItems);
-
-    // GPS (#6)
     initGPS(map);
 
-    // Heatmap (#13)
     state.heatLayer = initHeatmap(map);
 
-    // Heatmap toggle button
+    // Heatmap toggle
     const heatmapBtn = document.getElementById('heatmap-toggle');
     if (heatmapBtn) {
         let heatmapVisible = false;
@@ -367,7 +433,7 @@ async function initApp() {
     }
 
     // Photo input
-    photoInput.addEventListener('change', handlePhotoChange);
+    if (photoInput) photoInput.addEventListener('change', handlePhotoChange);
 
     // Draw events
     map.on('draw:created', handleDrawCreated);
@@ -375,32 +441,26 @@ async function initApp() {
     map.on('draw:deleted', handleDrawDeleted);
 
     // Form buttons
-    document.getElementById('cancel-btn').addEventListener('click', () => {
+    document.getElementById('cancel-feature-btn')?.addEventListener('click', () => {
         if (state.currentLayer) { map.removeLayer(state.currentLayer); state.currentLayer = null; }
-        closePanel(formPanel);
+        closePanel(featureFormPanel);
     });
 
-    document.getElementById('cancel-plot-btn').addEventListener('click', () => {
-        if (state.currentLayer) { map.removeLayer(state.currentLayer); state.currentLayer = null; }
-        closePanel(plotFormPanel);
-    });
+    document.getElementById('save-feature-btn')?.addEventListener('click', saveFeature);
 
-    document.getElementById('save-btn').addEventListener('click', saveTree);
-    document.getElementById('save-plot-btn').addEventListener('click', savePlot);
-
-    // Edit panel (#15)
+    // Edit panel
     document.getElementById('cancel-edit-btn')?.addEventListener('click', () => {
-        state.editingTreeId = null;
+        state.editingFeatureId = null;
         closePanel(editPanel);
     });
-    document.getElementById('save-edit-btn')?.addEventListener('click', saveEditTree);
+    document.getElementById('save-edit-btn')?.addEventListener('click', saveEditFeature);
 
-    // Import panel (#16)
+    // Import panel
     document.getElementById('cancel-import-btn')?.addEventListener('click', () => closePanel(importPanel));
     document.getElementById('import-file')?.addEventListener('change', handleImportFileChange);
     document.getElementById('confirm-import-btn')?.addEventListener('click', executeImport);
 
-    // Export panel (#12)
+    // Export panel
     document.getElementById('cancel-export-btn')?.addEventListener('click', () => closePanel(exportPanel));
     document.querySelectorAll('.format-card').forEach(card => {
         card.addEventListener('click', () => {
@@ -424,15 +484,8 @@ async function initApp() {
         openPanel(importPanel);
     });
 
-    // Filters
-    filterSpecies.addEventListener('change', applyFilters);
-    filterHealth.addEventListener('change', applyFilters);
-    clearFiltersBtn.addEventListener('click', () => {
-        filterSpecies.value = '';
-        filterHealth.value = '';
-        clearFiltersBtn.style.display = 'none';
-        applyFilters();
-    });
+    // Layer management
+    document.getElementById('add-layer-btn')?.addEventListener('click', showAddLayerDialog);
 
     // Online/offline
     window.addEventListener('online', async () => {
@@ -453,7 +506,7 @@ async function initApp() {
 
     if (!navigator.onLine) showStatus('You are offline', 'offline');
 
-    // Search with debounce (#28)
+    // Search
     initSearch(map);
 
     // User dropdown
@@ -462,97 +515,96 @@ async function initApp() {
     // Panel backdrop
     initPanelBackdrop();
 
-    // Confirm modal (#11)
+    // Confirm modal
     initConfirmModal();
 
-    // Dashboard (#5)
+    // Dashboard
     initDashboard();
 
-    // Install prompt (#24)
+    // Install prompt
     initInstallPrompt();
 
-    // Species auto-suggest (#35)
-    initAutoSuggest('species', () => state.allSpecies);
-    initAutoSuggest('edit-species', () => state.allSpecies);
-
-    // Lightbox (#17)
+    // Lightbox
     initLightbox();
     window.addEventListener('open-lightbox', (e) => openLightbox(e.detail));
 
-    // Tree edit/delete events from popups (#15, #11)
-    window.addEventListener('edit-tree', (e) => openEditForm(e.detail));
-    window.addEventListener('delete-tree', (e) => confirmDeleteTree(e.detail));
+    // Feature edit/delete events
+    window.addEventListener('edit-feature', (e) => openEditForm(e.detail));
+    window.addEventListener('delete-feature', (e) => confirmDeleteFeature(e.detail));
 
-    // QR Tag event from popups
-    window.addEventListener('qr-tree', (e) => openQRModal(e.detail));
-
-    // QR modal init
-    initQRModal();
-
-    // Swipe to dismiss (#21)
+    // Swipe to dismiss
     initSwipeDismiss();
 
-    // Realtime (#31)
+    // Realtime
     initRealtime(
         (payload) => {
-            // Tree changed by someone else
-            if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE' || payload.eventType === 'DELETE') {
+            if (['INSERT', 'UPDATE', 'DELETE'].includes(payload.eventType)) {
                 reloadData();
             }
         },
         (payload) => {
-            if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE' || payload.eventType === 'DELETE') {
+            if (['INSERT', 'UPDATE', 'DELETE'].includes(payload.eventType)) {
                 reloadData();
             }
         }
     );
 
-    // Service Worker (#25 background sync)
+    // Service Worker
     if ('serviceWorker' in navigator) {
         const reg = await navigator.serviceWorker.register('./sw.js');
         console.log('SW registered:', reg.scope);
-
-        // Background sync registration
         if ('sync' in reg) {
-            try {
-                await reg.sync.register('sync-offline-queue');
-            } catch (e) {
-                console.log('Background sync not supported');
-            }
+            try { await reg.sync.register('sync-offline-queue'); } catch (e) { }
         }
     }
 
     updateQueueBadge();
     await reloadData();
-
-    // Deep-link: open tree from URL ?tree=ID
-    handleDeepLink();
 }
 
 // ========================================
 // Data Loading
 // ========================================
 async function reloadData() {
-    if (state.isLoadingData) return;
+    if (state.isLoadingData || !state.activeProject) return;
     state.isLoadingData = true;
-    showLoading('Loading forestry data...');
+    showLoading('Loading map data...');
 
     clearAppState();
 
     try {
-        const [trees, plots] = await Promise.all([loadAllTrees(), loadPlots()]);
+        const [layers, features] = await Promise.all([
+            loadLayers(state.activeProject.id),
+            loadFeatures(state.activeProject.id)
+        ]);
 
-        trees.forEach(tree => addTreeToMap(tree));
-        const allTrees = state.allTreeMarkers.map(m => m.tree);
-        plots.forEach(plot => addPlotToMap(plot, allTrees));
+        state.layers = layers;
 
-        updateSpeciesFilter();
-        updateDashboard();
+        // Set active layer to first layer if none selected
+        if (!state.activeLayerId && layers.length > 0) {
+            state.activeLayerId = layers[0].id;
+        }
+
+        // Create a lookup map for layers
+        const layerMap = {};
+        layers.forEach(l => { layerMap[l.id] = l; });
+
+        // Add features to map
+        features.forEach(feature => {
+            const layer = layerMap[feature.layer_id];
+            if (!layer) return;
+            addFeatureToMap(feature, layer);
+        });
 
         // Update heatmap
         if (state.heatLayer) {
-            updateHeatmap(state.heatLayer, allTrees);
+            updateHeatmap(state.heatLayer, features);
         }
+
+        // Update UI
+        renderLayerList(state.layers, handleLayerToggle, handleLayerSelect, confirmDeleteLayer);
+        updateDashboard();
+
     } catch (err) {
         console.error('Error loading data:', err);
         showToast('Error loading data: ' + err.message, 'error');
@@ -563,85 +615,103 @@ async function reloadData() {
 }
 
 function clearAppState() {
-    // Clear cluster group
     if (state.markerClusterGroup) state.markerClusterGroup.clearLayers();
-
-    // Clear drawn items (plots)
     if (state.drawnItems) state.drawnItems.clearLayers();
-
-    state.allTreeMarkers = [];
-    state.allPlotPolygons = [];
-    state.allSpecies.clear();
-    if (filterSpecies) filterSpecies.innerHTML = '<option value="">All Species</option>';
+    state.allFeatures = [];
 }
 
-function addTreeToMap(tree) {
-    const marker = createTreeMarker(tree);
+function addFeatureToMap(feature, layer) {
+    if (layer.visible === false) return; // Don't render invisible layers
 
-    // Add to cluster group or drawn items
-    if (state.markerClusterGroup) {
-        state.markerClusterGroup.addLayer(marker);
+    const mapLayer = createMapLayer(feature, layer);
+    if (!mapLayer) return;
+
+    if (feature.geometry_type === 'Point' && state.markerClusterGroup) {
+        state.markerClusterGroup.addLayer(mapLayer);
     } else {
-        state.drawnItems.addLayer(marker);
+        state.drawnItems.addLayer(mapLayer);
     }
 
-    state.allTreeMarkers.push({ marker, tree });
-
-    if (tree.species && tree.species !== 'Unknown') {
-        state.allSpecies.add(tree.species);
-    }
-}
-
-function addPlotToMap(plot, allTrees = []) {
-    const polygon = createPlotPolygon(plot, allTrees);
-    state.drawnItems.addLayer(polygon);
-    state.allPlotPolygons.push(polygon);
+    state.allFeatures.push({ feature, mapLayer, layerId: layer.id });
 }
 
 // ========================================
-// Species Filter (#10 count badges)
+// Layer Management
 // ========================================
-function updateSpeciesFilter() {
-    const current = filterSpecies.value;
-    filterSpecies.innerHTML = '<option value="">All Species</option>';
+function handleLayerToggle(layerId) {
+    const layer = state.layers.find(l => l.id === layerId);
+    if (!layer) return;
 
-    // Count per species
-    const counts = {};
-    state.allTreeMarkers.forEach(({ tree }) => {
-        const sp = tree.species || 'Unknown';
-        if (sp !== 'Unknown') counts[sp] = (counts[sp] || 0) + 1;
+    layer.visible = layer.visible === false ? true : false;
+
+    // Update on server (fire-and-forget)
+    updateLayer(layerId, { visible: layer.visible }).catch(() => {});
+
+    // Re-render
+    reloadData();
+}
+
+function handleLayerSelect(layerId) {
+    state.activeLayerId = layerId;
+
+    // Update layer list UI
+    document.querySelectorAll('.layer-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.layerId == layerId);
     });
 
-    const sorted = Object.entries(counts).sort((a, b) => a[0].localeCompare(b[0]));
-    sorted.forEach(([sp, count]) => {
-        const opt = document.createElement('option');
-        opt.value = sp;
-        opt.textContent = `${sp} (${count})`;
-        filterSpecies.appendChild(opt);
-    });
-
-    if (current && Object.keys(counts).includes(current)) {
-        filterSpecies.value = current;
+    // Update active layer indicator
+    const layer = state.layers.find(l => l.id === layerId);
+    const indicator = document.getElementById('active-layer-name');
+    if (indicator && layer) {
+        indicator.textContent = `${layer.icon || '📍'} ${layer.name}`;
+        indicator.style.color = layer.color;
     }
 }
 
-function applyFilters() {
-    const speciesVal = filterSpecies.value;
-    const healthVal = filterHealth.value;
-    const hasFilter = speciesVal || healthVal;
-    clearFiltersBtn.style.display = hasFilter ? 'block' : 'none';
+function confirmDeleteLayer(layerId) {
+    const layer = state.layers.find(l => l.id === layerId);
+    if (!layer) return;
 
-    state.allTreeMarkers.forEach(({ marker, tree }) => {
-        let show = true;
-        if (speciesVal && tree.species !== speciesVal) show = false;
-        if (healthVal && tree.health !== healthVal) show = false;
-
-        const group = state.markerClusterGroup || state.drawnItems;
-        if (show) {
-            if (!group.hasLayer(marker)) group.addLayer(marker);
-        } else {
-            if (group.hasLayer(marker)) group.removeLayer(marker);
+    showConfirm(
+        'Delete Layer',
+        `Delete "${layer.name}"? All features in this layer will be permanently removed.`,
+        async () => {
+            try {
+                await deleteLayerDB(layerId);
+                state.layers = state.layers.filter(l => l.id !== layerId);
+                if (state.activeLayerId === layerId) {
+                    state.activeLayerId = state.layers.length > 0 ? state.layers[0].id : null;
+                }
+                showToast('Layer deleted', 'success');
+                haptic([10, 50, 10]);
+                await reloadData();
+            } catch (err) {
+                showToast('Error deleting layer: ' + err.message, 'error');
+            }
         }
+    );
+}
+
+function showAddLayerDialog() {
+    const name = prompt('Layer name:');
+    if (!name || !name.trim()) return;
+
+    const colorIndex = state.layers.length % LAYER_COLORS.length;
+
+    createLayer({
+        project_id: state.activeProject.id,
+        name: name.trim(),
+        color: LAYER_COLORS[colorIndex],
+        icon: '📍',
+        geometry_type: 'Point',
+        schema: DEFAULT_SCHEMA,
+        visible: true,
+        order_index: state.layers.length,
+    }).then(async () => {
+        showToast('Layer created!', 'success');
+        await reloadData();
+    }).catch(err => {
+        showToast('Error creating layer: ' + err.message, 'error');
     });
 }
 
@@ -687,38 +757,73 @@ function handleDrawCreated(e) {
 
     closeAllPanels();
 
-    if (type === 'marker') {
-        state.currentDrawType = 'marker';
-        
-        // Populate coordinates for new tree display
-        const latlng = layer.getLatLng();
-        const latStr = latlng.lat.toFixed(6);
-        const lngStr = latlng.lng.toFixed(6);
-        const coordsDisplay = document.getElementById('new-tree-coords');
-        if (coordsDisplay) coordsDisplay.textContent = `${latStr}, ${lngStr}`;
-        
-        openPanel(formPanel);
-        resetTreeForm();
+    if (!state.activeLayerId || state.layers.length === 0) {
+        showToast('Please create a layer first before adding features', 'warning');
+        state.map.removeLayer(state.currentLayer);
+        state.currentLayer = null;
+        return;
+    }
 
-        // Fetch elevation
-        const elevInput = document.getElementById('elevation');
-        if (elevInput) elevInput.value = '';
-        fetchElevation(latlng.lat, latlng.lng).then(elevation => {
-            if (elevInput) elevInput.value = elevation.toFixed(1);
-        });
+    const activeLayer = state.layers.find(l => l.id === state.activeLayerId);
+
+    if (type === 'marker') {
+        state.currentDrawType = 'Point';
+        const latlng = layer.getLatLng();
+        const coordsDisplay = document.getElementById('new-feature-coords');
+        if (coordsDisplay) coordsDisplay.textContent = `${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}`;
+
+        // Generate form fields from layer schema
+        const fieldsContainer = document.getElementById('feature-form-fields');
+        generateFormFields(fieldsContainer, activeLayer?.schema || DEFAULT_SCHEMA);
+
+        // Auto-fetch elevation if schema has elevation field
+        if (activeLayer?.schema?.find(f => f.key === 'elevation')) {
+            fetchElevation(latlng.lat, latlng.lng).then(elev => {
+                const elevInput = document.getElementById('field-elevation');
+                if (elevInput) elevInput.value = elev.toFixed(1);
+            });
+        }
+
+        // Update form title
+        const formTitle = document.getElementById('feature-form-title');
+        if (formTitle) formTitle.textContent = `${activeLayer?.icon || '📍'} New ${activeLayer?.name || 'Feature'}`;
+
+        openPanel(featureFormPanel);
+
     } else if (type === 'polyline') {
+        state.currentDrawType = 'LineString';
         const latlngs = layer.getLatLngs();
         let totalDistance = 0;
         for (let i = 0; i < latlngs.length - 1; i++) {
-            totalDistance += haversineDistance(latlngs[i].lat, latlngs[i].lng, latlngs[i+1].lat, latlngs[i+1].lng);
+            totalDistance += haversineDistance(latlngs[i].lat, latlngs[i].lng, latlngs[i + 1].lat, latlngs[i + 1].lng);
         }
-        const distanceStr = totalDistance > 1000 ? (totalDistance / 1000).toFixed(2) + ' km' : totalDistance.toFixed(1) + ' m';
-        layer.bindPopup(`<span class="popup-label">📏 Distance:</span> ${distanceStr}`).openPopup();
-    } else if (type === 'polygon') {
-        state.currentDrawType = 'polygon';
-        openPanel(plotFormPanel);
-        document.getElementById('plot-name').value = '';
-        document.getElementById('plot-notes').value = '';
+        const distStr = totalDistance > 1000 ? (totalDistance / 1000).toFixed(2) + ' km' : totalDistance.toFixed(1) + ' m';
+
+        // Show form
+        const fieldsContainer = document.getElementById('feature-form-fields');
+        generateFormFields(fieldsContainer, activeLayer?.schema || DEFAULT_SCHEMA);
+
+        const coordsDisplay = document.getElementById('new-feature-coords');
+        if (coordsDisplay) coordsDisplay.textContent = `📏 ${distStr} (${latlngs.length} points)`;
+
+        const formTitle = document.getElementById('feature-form-title');
+        if (formTitle) formTitle.textContent = `📏 New Line`;
+
+        openPanel(featureFormPanel);
+
+    } else if (type === 'polygon' || type === 'rectangle') {
+        state.currentDrawType = 'Polygon';
+
+        const fieldsContainer = document.getElementById('feature-form-fields');
+        generateFormFields(fieldsContainer, activeLayer?.schema || DEFAULT_SCHEMA);
+
+        const coordsDisplay = document.getElementById('new-feature-coords');
+        if (coordsDisplay) coordsDisplay.textContent = `📐 Polygon`;
+
+        const formTitle = document.getElementById('feature-form-title');
+        if (formTitle) formTitle.textContent = `📐 New Area`;
+
+        openPanel(featureFormPanel);
     }
 }
 
@@ -726,306 +831,233 @@ async function handleDrawEdited(e) {
     const layers = e.layers;
     layers.eachLayer(async (layer) => {
         const dbId = layer.databaseId;
-        const type = layer.layerType;
-        if (!dbId || !type) return;
+        if (!dbId) return;
 
-        if (type === 'tree') {
-            const latlng = layer.getLatLng();
-            try {
-                await updateTree(dbId, { latitude: latlng.lat, longitude: latlng.lng });
-                showToast('Tree location updated!', 'success');
-                haptic();
-            } catch (err) {
-                if (!navigator.onLine) {
-                    queueOfflineAction('edit-tree', { id: dbId, latitude: latlng.lat, longitude: latlng.lng });
-                    updateQueueBadge();
-                    showToast('Saved edit offline — will sync later', 'warning');
-                } else {
-                    showToast('Error updating tree: ' + err.message, 'error');
-                }
-            }
-        } else if (type === 'plot') {
-            const latlngs = layer.getLatLngs()[0];
-            const coordinates = latlngs.map(ll => ({ lat: ll.lat, lng: ll.lng }));
-            try {
-                await updatePlot(dbId, { coordinates });
-                showToast('Plot coordinates updated!', 'success');
-                haptic();
-            } catch (err) {
-                if (!navigator.onLine) {
-                    queueOfflineAction('edit-plot', { id: dbId, coordinates });
-                    updateQueueBadge();
-                    showToast('Saved edit offline — will sync later', 'warning');
-                } else {
-                    showToast('Error updating plot: ' + err.message, 'error');
-                }
+        let coordinates;
+        if (layer.getLatLng) {
+            const ll = layer.getLatLng();
+            coordinates = { lat: ll.lat, lng: ll.lng };
+        } else if (layer.getLatLngs) {
+            const lls = layer.getLatLngs();
+            const flat = Array.isArray(lls[0]) && Array.isArray(lls[0][0]) ? lls[0] : lls;
+            const arr = Array.isArray(flat[0]) ? flat : [flat];
+            coordinates = arr[0].map(ll => ({ lat: ll.lat, lng: ll.lng }));
+        }
+
+        try {
+            await updateFeature(dbId, { coordinates });
+            showToast('Feature location updated!', 'success');
+            haptic();
+        } catch (err) {
+            if (!navigator.onLine) {
+                queueOfflineAction('edit-feature', { id: dbId, coordinates });
+                updateQueueBadge();
+                showToast('Saved edit offline — will sync later', 'warning');
+            } else {
+                showToast('Error updating feature: ' + err.message, 'error');
             }
         }
     });
 }
 
 function handleDrawDeleted(e) {
-    // Confirmation is handled via custom delete buttons in popups (#11)
-    // This handles the Leaflet Draw toolbar delete
     const layers = e.layers;
     layers.eachLayer(async (layer) => {
         const dbId = layer.databaseId;
-        const type = layer.layerType;
-        if (!dbId || !type) return;
+        if (!dbId) return;
 
-        if (type === 'tree') {
-            try {
-                await deleteTreeDB(dbId);
-                state.allTreeMarkers = state.allTreeMarkers.filter(item => item.tree.id !== dbId);
-                updateSpeciesFilter();
-                updateDashboard();
-                showToast('Tree deleted!', 'success');
-                haptic([10, 50, 10]);
-            } catch (err) {
-                if (!navigator.onLine) {
-                    queueOfflineAction('delete-tree', { id: dbId });
-                    updateQueueBadge();
-                    showToast('Deleted offline — will sync later', 'warning');
-                } else {
-                    showToast('Error deleting tree: ' + err.message, 'error');
-                }
-            }
-        } else if (type === 'plot') {
-            try {
-                await deletePlotDB(dbId);
-                state.allPlotPolygons = state.allPlotPolygons.filter(p => p !== layer);
-                updateDashboard();
-                showToast('Plot deleted!', 'success');
-                haptic([10, 50, 10]);
-            } catch (err) {
-                if (!navigator.onLine) {
-                    queueOfflineAction('delete-plot', { id: dbId });
-                    updateQueueBadge();
-                    showToast('Deleted offline — will sync later', 'warning');
-                } else {
-                    showToast('Error deleting plot: ' + err.message, 'error');
-                }
+        try {
+            await deleteFeatureDB(dbId);
+            state.allFeatures = state.allFeatures.filter(f => f.feature.id !== dbId);
+            updateDashboard();
+            showToast('Feature deleted!', 'success');
+            haptic([10, 50, 10]);
+        } catch (err) {
+            if (!navigator.onLine) {
+                queueOfflineAction('delete-feature', { id: dbId });
+                updateQueueBadge();
+                showToast('Deleted offline — will sync later', 'warning');
+            } else {
+                showToast('Error deleting feature: ' + err.message, 'error');
             }
         }
     });
 }
 
 // ========================================
-// Save Tree (#27 validation)
+// Save Feature
 // ========================================
-function resetTreeForm() {
-    document.getElementById('species').value = '';
-    document.getElementById('dbh').value = '';
-    document.getElementById('height').value = '';
-    document.getElementById('elevation').value = '';
-    document.getElementById('health').value = 'Healthy';
-    document.getElementById('notes').value = '';
-    photoInput.value = '';
-    fileLabel.textContent = '📷 Tap to attach photo';
-    fileLabel.classList.remove('has-file');
-    photoPreview.style.display = 'none';
-}
+async function saveFeature() {
+    if (!state.currentLayer || !state.currentUser || !state.activeLayerId) return;
 
-async function saveTree() {
-    if (!state.currentLayer || !state.currentUser) return;
+    const activeLayer = state.layers.find(l => l.id === state.activeLayerId);
+    const schema = activeLayer?.schema || DEFAULT_SCHEMA;
+    const attributes = readFormFields(schema);
 
-    const species = document.getElementById('species').value || 'Unknown';
-    const dbh = parseFloat(document.getElementById('dbh').value) || 0;
-    const height = parseFloat(document.getElementById('height').value) || 0;
-    const elevation = parseFloat(document.getElementById('elevation').value) || 0;
-    const health = document.getElementById('health').value;
-    const notes = document.getElementById('notes').value;
-
-    // Validation (#27)
-    const errors = validateTreeInput(species, dbh, height);
+    // Validation
+    const errors = validateFeatureInput(attributes, schema);
     if (errors.length > 0) {
         showToast(errors.join('. '), 'error');
         return;
     }
 
-    const latlng = state.currentLayer.getLatLng();
-    const file = photoInput.files[0];
-    let photoUrl = null;
+    // Get coordinates based on geometry type
+    let coordinates;
+    if (state.currentDrawType === 'Point') {
+        const latlng = state.currentLayer.getLatLng();
+        coordinates = { lat: latlng.lat, lng: latlng.lng };
+    } else if (state.currentDrawType === 'LineString') {
+        coordinates = state.currentLayer.getLatLngs().map(ll => ({ lat: ll.lat, lng: ll.lng }));
+    } else if (state.currentDrawType === 'Polygon') {
+        const latlngs = state.currentLayer.getLatLngs()[0];
+        coordinates = latlngs.map(ll => ({ lat: ll.lat, lng: ll.lng }));
+    }
 
+    // Photo
+    const file = photoInput?.files?.[0];
+    let photoUrl = null;
     if (file) {
-        try {
-            photoUrl = await uploadPhoto(file);
-        } catch (err) {
+        try { photoUrl = await uploadPhoto(file); } catch (err) {
             showToast('Photo upload failed: ' + err.message, 'error');
         }
     }
 
-    const treeData = {
-        species, dbh, height, elevation, health, notes,
-        latitude: latlng.lat, longitude: latlng.lng,
-        photo_url: photoUrl, user_id: state.currentUser.id
+    const featureData = {
+        layer_id: state.activeLayerId,
+        geometry_type: state.currentDrawType,
+        coordinates,
+        attributes,
+        photo_url: photoUrl,
+        user_id: state.currentUser.id,
     };
 
     try {
-        const saved = await insertTree(treeData);
+        await insertFeature(featureData);
         state.map.removeLayer(state.currentLayer);
-        addTreeToMap(saved);
         state.currentLayer = null;
-        closePanel(formPanel);
-        updateSpeciesFilter();
-        updateDashboard();
-        if (state.heatLayer) updateHeatmap(state.heatLayer, state.allTreeMarkers.map(m => m.tree));
-        showToast('Tree saved!', 'success');
+        closePanel(featureFormPanel);
+        showToast('Feature saved!', 'success');
         haptic();
+        await reloadData();
     } catch (err) {
         if (!navigator.onLine) {
-            queueOfflineAction('tree', treeData);
+            queueOfflineAction('feature', featureData);
             state.map.removeLayer(state.currentLayer);
             state.currentLayer = null;
-            closePanel(formPanel);
+            closePanel(featureFormPanel);
             updateQueueBadge();
             showToast('Saved offline — will sync later', 'warning');
         } else {
-            showToast('Error saving tree: ' + err.message, 'error');
+            showToast('Error saving feature: ' + err.message, 'error');
         }
     }
 }
 
 // ========================================
-// Save Plot
+// Edit Feature
 // ========================================
-async function savePlot() {
-    if (!state.currentLayer || !state.currentUser) return;
-
-    const latlngs = state.currentLayer.getLatLngs()[0];
-    const coordinates = latlngs.map(ll => ({ lat: ll.lat, lng: ll.lng }));
-    const name = document.getElementById('plot-name').value || 'Unnamed Plot';
-    const notes = document.getElementById('plot-notes').value;
-
-    const plotData = { name, notes, coordinates, user_id: state.currentUser.id };
-
-    try {
-        const saved = await insertPlot(plotData);
-        state.map.removeLayer(state.currentLayer);
-        addPlotToMap(saved, state.allTreeMarkers.map(m => m.tree));
-        state.currentLayer = null;
-        closePanel(plotFormPanel);
-        updateDashboard();
-        showToast('Plot saved!', 'success');
-        haptic();
-    } catch (err) {
-        if (!navigator.onLine) {
-            queueOfflineAction('plot', plotData);
-            state.map.removeLayer(state.currentLayer);
-            state.currentLayer = null;
-            closePanel(plotFormPanel);
-            updateQueueBadge();
-            showToast('Saved offline — will sync later', 'warning');
-        } else {
-            showToast('Error saving plot: ' + err.message, 'error');
-        }
-    }
-}
-
-// ========================================
-// Edit Tree (#15)
-// ========================================
-function openEditForm(treeId) {
-    const item = state.allTreeMarkers.find(m => m.tree.id === treeId);
+function openEditForm(featureId) {
+    const item = state.allFeatures.find(f => f.feature.id === featureId);
     if (!item) return;
-    const tree = item.tree;
+    const feature = item.feature;
+    const layer = state.layers.find(l => l.id === feature.layer_id);
 
-    state.editingTreeId = treeId;
+    state.editingFeatureId = featureId;
     state.map.closePopup();
 
-    // Pre-fill form
-    document.getElementById('edit-species').value = tree.species || '';
-    document.getElementById('edit-dbh').value = tree.dbh || '';
-    document.getElementById('edit-height').value = tree.height || '';
-    document.getElementById('edit-elevation').value = tree.elevation !== undefined ? tree.elevation : '';
-    document.getElementById('edit-health').value = tree.health || 'Healthy';
-    document.getElementById('edit-notes').value = tree.notes || '';
+    // Generate form fields with current values
+    const fieldsContainer = document.getElementById('edit-form-fields');
+    generateFormFields(fieldsContainer, layer?.schema || DEFAULT_SCHEMA, feature.attributes || {});
 
-    // Fill coordinates
-    const latStr = tree.latitude ? parseFloat(tree.latitude).toFixed(6) : '0.000000';
-    const lngStr = tree.longitude ? parseFloat(tree.longitude).toFixed(6) : '0.000000';
-    const coordsDisplay = document.getElementById('edit-tree-coords');
-    if (coordsDisplay) coordsDisplay.textContent = `${latStr}, ${lngStr}`;
+    // Coordinates display
+    const coordsDisplay = document.getElementById('edit-feature-coords');
+    if (coordsDisplay && feature.coordinates) {
+        if (feature.geometry_type === 'Point') {
+            coordsDisplay.textContent = `${parseFloat(feature.coordinates.lat).toFixed(6)}, ${parseFloat(feature.coordinates.lng).toFixed(6)}`;
+        } else {
+            coordsDisplay.textContent = `${feature.geometry_type} (${Array.isArray(feature.coordinates) ? feature.coordinates.length : 0} points)`;
+        }
+    }
+
+    // Title
+    const editTitle = document.getElementById('edit-form-title');
+    if (editTitle) editTitle.textContent = `✏️ Edit ${layer?.name || 'Feature'}`;
 
     closeAllPanels();
     openPanel(editPanel);
 }
 
-async function saveEditTree() {
-    if (!state.editingTreeId) return;
+async function saveEditFeature() {
+    if (!state.editingFeatureId) return;
 
-    const species = document.getElementById('edit-species').value || 'Unknown';
-    const dbh = parseFloat(document.getElementById('edit-dbh').value) || 0;
-    const height = parseFloat(document.getElementById('edit-height').value) || 0;
-    const elevation = parseFloat(document.getElementById('edit-elevation').value) || 0;
-    const health = document.getElementById('edit-health').value;
-    const notes = document.getElementById('edit-notes').value;
+    const item = state.allFeatures.find(f => f.feature.id === state.editingFeatureId);
+    if (!item) return;
+    const layer = state.layers.find(l => l.id === item.feature.layer_id);
+    const schema = layer?.schema || DEFAULT_SCHEMA;
+    const attributes = readFormFields(schema);
 
-    const errors = validateTreeInput(species, dbh, height);
+    const errors = validateFeatureInput(attributes, schema);
     if (errors.length > 0) {
         showToast(errors.join('. '), 'error');
         return;
     }
 
-    // Handle edit photo
+    // Handle photo
     const editPhotoInput = document.getElementById('edit-photo');
-    let photoUrl = undefined; // undefined = don't update
-    if (editPhotoInput?.files[0]) {
-        try {
-            photoUrl = await uploadPhoto(editPhotoInput.files[0]);
-        } catch (err) {
+    let photoUrl = undefined;
+    if (editPhotoInput?.files?.[0]) {
+        try { photoUrl = await uploadPhoto(editPhotoInput.files[0]); } catch (err) {
             showToast('Photo upload failed: ' + err.message, 'error');
         }
     }
 
-    const updateData = { species, dbh, height, elevation, health, notes };
+    const updateData = { attributes };
     if (photoUrl !== undefined) updateData.photo_url = photoUrl;
 
     try {
-        await updateTree(state.editingTreeId, updateData);
+        await updateFeature(state.editingFeatureId, updateData);
         closePanel(editPanel);
-        state.editingTreeId = null;
-        showToast('Tree updated!', 'success');
+        state.editingFeatureId = null;
+        showToast('Feature updated!', 'success');
         haptic();
         await reloadData();
     } catch (err) {
         if (!navigator.onLine) {
-            queueOfflineAction('edit-tree', { id: state.editingTreeId, ...updateData });
+            queueOfflineAction('edit-feature', { id: state.editingFeatureId, ...updateData });
             closePanel(editPanel);
-            state.editingTreeId = null;
+            state.editingFeatureId = null;
             updateQueueBadge();
             showToast('Edit saved offline — will sync later', 'warning');
         } else {
-            showToast('Error updating tree: ' + err.message, 'error');
+            showToast('Error updating feature: ' + err.message, 'error');
         }
     }
 }
 
-function confirmDeleteTree(treeId) {
+function confirmDeleteFeature(featureId) {
     showConfirm(
-        'Delete Tree',
-        'Are you sure you want to delete this tree? This action cannot be undone.',
+        'Delete Feature',
+        'Are you sure you want to delete this feature? This action cannot be undone.',
         async () => {
             try {
-                await deleteTreeDB(treeId);
-                // Remove marker
-                const item = state.allTreeMarkers.find(m => m.tree.id === treeId);
+                await deleteFeatureDB(featureId);
+                const item = state.allFeatures.find(f => f.feature.id === featureId);
                 if (item) {
-                    const group = state.markerClusterGroup || state.drawnItems;
-                    group.removeLayer(item.marker);
+                    const group = item.feature.geometry_type === 'Point' && state.markerClusterGroup
+                        ? state.markerClusterGroup : state.drawnItems;
+                    group.removeLayer(item.mapLayer);
                 }
-                state.allTreeMarkers = state.allTreeMarkers.filter(m => m.tree.id !== treeId);
-                updateSpeciesFilter();
+                state.allFeatures = state.allFeatures.filter(f => f.feature.id !== featureId);
                 updateDashboard();
-                showToast('Tree deleted!', 'success');
+                showToast('Feature deleted!', 'success');
                 haptic([10, 50, 10]);
             } catch (err) {
                 if (!navigator.onLine) {
-                    queueOfflineAction('delete-tree', { id: treeId });
+                    queueOfflineAction('delete-feature', { id: featureId });
                     updateQueueBadge();
                     showToast('Deleted offline — will sync later', 'warning');
                 } else {
-                    showToast('Error deleting tree: ' + err.message, 'error');
+                    showToast('Error deleting feature: ' + err.message, 'error');
                 }
             }
         }
@@ -1033,7 +1065,7 @@ function confirmDeleteTree(treeId) {
 }
 
 // ========================================
-// CSV Import (#16)
+// CSV/GeoJSON Import
 // ========================================
 let importPreviewData = null;
 
@@ -1043,73 +1075,93 @@ function handleImportFileChange(e) {
 
     const reader = new FileReader();
     reader.onload = (ev) => {
-        const csvText = ev.target.result;
-        const result = parseCSVImport(csvText);
-        importPreviewData = result;
+        const text = ev.target.result;
+        const isGeoJSON = file.name.endsWith('.geojson') || file.name.endsWith('.json');
 
-        const preview = document.getElementById('import-preview');
+        if (isGeoJSON) {
+            const result = parseGeoJSONImport(text);
+            importPreviewData = { type: 'geojson', ...result };
+        } else {
+            const result = parseCSVImport(text);
+            importPreviewData = { type: 'csv', ...result };
+        }
+
         const errorsDiv = document.getElementById('import-errors');
         const statsDiv = document.getElementById('import-stats');
         const confirmBtn = document.getElementById('confirm-import-btn');
+        const preview = document.getElementById('import-preview');
 
-        if (result.errors.length > 0) {
-            errorsDiv.innerHTML = result.errors.map(e => `⚠ ${sanitize(e)}`).join('<br>');
+        const itemCount = importPreviewData.type === 'geojson'
+            ? importPreviewData.features?.length || 0
+            : importPreviewData.rows?.length || 0;
+        const errs = importPreviewData.errors || [];
+
+        if (errs.length > 0) {
+            errorsDiv.innerHTML = errs.map(e => `⚠ ${sanitize(e)}`).join('<br>');
             errorsDiv.style.display = 'block';
         } else {
             errorsDiv.style.display = 'none';
         }
 
-        if (result.rows.length > 0) {
-            statsDiv.innerHTML = `<span>✅ ${result.rows.length} valid rows</span>`;
+        if (itemCount > 0) {
+            statsDiv.innerHTML = `<span>✅ ${itemCount} valid features</span>`;
             statsDiv.style.display = 'flex';
             confirmBtn.disabled = false;
-
-            // Preview table (first 5 rows)
-            const previewRows = result.rows.slice(0, 5);
-            let table = '<table class="import-preview-table"><thead><tr>';
-            table += '<th>Species</th><th>DBH</th><th>Height</th><th>Health</th><th>Lat</th><th>Lng</th>';
-            table += '</tr></thead><tbody>';
-            previewRows.forEach(r => {
-                table += `<tr><td>${sanitize(r.species)}</td><td>${r.dbh}</td><td>${r.height}</td>`;
-                table += `<td>${sanitize(r.health)}</td><td>${r.latitude.toFixed(4)}</td><td>${r.longitude.toFixed(4)}</td></tr>`;
-            });
-            if (result.rows.length > 5) {
-                table += `<tr><td colspan="6" style="text-align:center;color:#7a9a7a">... and ${result.rows.length - 5} more rows</td></tr>`;
-            }
-            table += '</tbody></table>';
-            preview.innerHTML = table;
+            preview.innerHTML = `<p style="color: var(--text-muted); text-align: center;">
+                Ready to import ${itemCount} features into the active layer</p>`;
         } else {
             statsDiv.style.display = 'none';
             confirmBtn.disabled = true;
-            preview.innerHTML = '<p style="color:#7a9a7a;text-align:center">No valid data found</p>';
+            preview.innerHTML = '<p style="color: var(--text-muted); text-align: center;">No valid data found</p>';
         }
     };
     reader.readAsText(file);
 }
 
 async function executeImport() {
-    if (!importPreviewData || importPreviewData.rows.length === 0) return;
+    if (!importPreviewData || !state.activeLayerId) return;
 
     const confirmBtn = document.getElementById('confirm-import-btn');
     confirmBtn.disabled = true;
     confirmBtn.innerHTML = '<span class="spinner"></span>Importing...';
 
     try {
-        const csvText = await readFileAsText(document.getElementById('import-file').files[0]);
-        const result = await importTreesFromCSV(csvText);
-
-        closePanel(importPanel);
-        showToast(`Imported ${result.imported} of ${result.total} trees!`, result.errors.length > 0 ? 'warning' : 'success');
-        if (result.errors.length > 0) {
-            console.warn('Import errors:', result.errors);
+        if (importPreviewData.type === 'csv') {
+            const file = document.getElementById('import-file').files[0];
+            const text = await readFileAsText(file);
+            const result = await importFeaturesFromCSV(text, state.activeLayerId);
+            closePanel(importPanel);
+            showToast(`Imported ${result.imported} of ${result.total} features!`,
+                result.errors.length > 0 ? 'warning' : 'success');
+        } else if (importPreviewData.type === 'geojson') {
+            // Import GeoJSON features one by one
+            let imported = 0;
+            for (const f of importPreviewData.features) {
+                try {
+                    await insertFeature({
+                        layer_id: state.activeLayerId,
+                        geometry_type: f.geometry_type,
+                        coordinates: f.coordinates,
+                        attributes: f.attributes,
+                        photo_url: f.photo_url,
+                        user_id: state.currentUser.id,
+                    });
+                    imported++;
+                } catch (err) {
+                    console.warn('Import feature error:', err);
+                }
+            }
+            closePanel(importPanel);
+            showToast(`Imported ${imported} features!`, 'success');
         }
+
         haptic();
         await reloadData();
     } catch (err) {
         showToast('Import failed: ' + err.message, 'error');
     } finally {
         confirmBtn.disabled = false;
-        confirmBtn.textContent = 'Import Trees';
+        confirmBtn.textContent = 'Import Features';
     }
 }
 
@@ -1123,7 +1175,7 @@ function readFileAsText(file) {
 }
 
 // ========================================
-// Search (#28 debounced)
+// Search
 // ========================================
 function initSearch(map) {
     const searchInput = document.getElementById('search-input');
@@ -1168,13 +1220,12 @@ function initSearch(map) {
                     map.flyTo([lat, lon], 14);
 
                     if (state.searchMarker) map.removeLayer(state.searchMarker);
-                    state.searchMarker = L.marker([lat, lon], {
-                        icon: L.icon({
-                            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
-                            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-                            iconSize: [25, 41], iconAnchor: [12, 41],
-                            popupAnchor: [1, -34], shadowSize: [41, 41]
-                        })
+                    state.searchMarker = L.circleMarker([lat, lon], {
+                        radius: 10,
+                        fillColor: '#FF6B6B',
+                        fillOpacity: 1,
+                        color: '#fff',
+                        weight: 3
                     }).addTo(map);
                     state.searchMarker.bindPopup(`<strong>${sanitize(primaryName)}</strong><br><small>${sanitize(details)}</small>`).openPopup();
                     searchResults.style.display = 'none';
@@ -1193,7 +1244,6 @@ function initSearch(map) {
     searchInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') performSearch();
     });
-    // Auto-search on typing (debounced)
     searchInput.addEventListener('input', () => {
         if (searchInput.value.trim().length >= 3) debouncedSearch();
     });
@@ -1233,14 +1283,11 @@ function initPanelBackdrop() {
     if (!backdrop) return;
 
     backdrop.addEventListener('click', () => {
-        if (formPanel.classList.contains('active')) {
+        if (featureFormPanel?.classList.contains('active')) {
             if (state.currentLayer) { state.map.removeLayer(state.currentLayer); state.currentLayer = null; }
-            closePanel(formPanel);
-        } else if (plotFormPanel.classList.contains('active')) {
-            if (state.currentLayer) { state.map.removeLayer(state.currentLayer); state.currentLayer = null; }
-            closePanel(plotFormPanel);
+            closePanel(featureFormPanel);
         } else if (editPanel?.classList.contains('active')) {
-            state.editingTreeId = null;
+            state.editingFeatureId = null;
             closePanel(editPanel);
         } else if (importPanel?.classList.contains('active')) {
             closePanel(importPanel);
@@ -1248,125 +1295,4 @@ function initPanelBackdrop() {
             closePanel(exportPanel);
         }
     });
-}
-
-// ========================================
-// QR Tag Modal
-// ========================================
-function initQRModal() {
-    document.getElementById('qr-modal-close')?.addEventListener('click', closeQRModal);
-    document.getElementById('qr-modal-cancel')?.addEventListener('click', closeQRModal);
-    document.getElementById('qr-modal')?.addEventListener('click', (e) => {
-        if (e.target.id === 'qr-modal') closeQRModal();
-    });
-    document.getElementById('qr-print-btn')?.addEventListener('click', () => {
-        window.print();
-    });
-}
-
-function openQRModal(treeId) {
-    const item = state.allTreeMarkers.find(m => m.tree.id === treeId);
-    if (!item) return;
-    const tree = item.tree;
-
-    const code = treeIdToCode(tree.id);
-
-    // Build the deep-link URL
-    const url = `${location.origin}${location.pathname}?tree=${code}`;
-
-    // Populate tag fields
-    document.getElementById('qr-tag-id').textContent   = code;
-    document.getElementById('qr-tag-species').textContent = tree.species || 'Unknown';
-    document.getElementById('qr-tag-health').textContent  = tree.health  || 'Healthy';
-    document.getElementById('qr-tag-dbh').textContent     = `${tree.dbh || 0} cm`;
-    document.getElementById('qr-tag-height').textContent  = `${tree.height || 0} m`;
-
-    // Clear previous QR and generate new one
-    const canvas = document.getElementById('qr-code-canvas');
-    canvas.innerHTML = '';
-    // eslint-disable-next-line no-undef
-    new QRCode(canvas, {
-        text: url,
-        width: 160,
-        height: 160,
-        colorDark: '#1a3a1a',
-        colorLight: '#f0f8f0',
-        correctLevel: QRCode.CorrectLevel.H
-    });
-
-    // Close any open map popup
-    state.map?.closePopup();
-
-    document.getElementById('qr-modal').classList.add('active');
-}
-
-function closeQRModal() {
-    document.getElementById('qr-modal').classList.remove('active');
-}
-
-// ========================================
-// Deep Link Handler (?tree=ID)
-// ========================================
-async function handleDeepLink() {
-    const params = new URLSearchParams(window.location.search);
-    const treeParam = params.get('tree');
-    if (!treeParam) return;
-
-    let treeId = parseInt(treeParam, 10);
-    // If tree parameter is not an integer, try decoding it as a tree code
-    if (isNaN(treeId)) {
-        treeId = treeCodeToId(treeParam);
-    }
-    if (!treeId) return;
-
-    let item = state.allTreeMarkers.find(m => m.tree.id == treeId);
-    
-    if (!item) {
-        showLoading('Loading tree details...');
-        try {
-            const { data: tree, error } = await supabase
-                .from('trees')
-                .select('*')
-                .eq('id', treeId)
-                .single();
-
-            if (error || !tree) {
-                showToast(`Tree ${treeParam} not found or access restricted`, 'warning');
-                return;
-            }
-
-            // Tree exists and is accessible! Let's add it to the map dynamically
-            addTreeToMap(tree);
-            item = state.allTreeMarkers.find(m => m.tree.id == treeId);
-            
-            // Update UI dashboard & species list
-            updateSpeciesFilter();
-            updateDashboard();
-            if (state.heatLayer) updateHeatmap(state.heatLayer, state.allTreeMarkers.map(m => m.tree));
-
-        } catch (err) {
-            console.error('Error fetching deep-linked tree:', err);
-            showToast(`Tree ${treeParam} could not be loaded`, 'error');
-            return;
-        } finally {
-            hideLoading();
-        }
-    }
-
-    if (item) {
-        const { marker, tree } = item;
-        state.map.flyTo([tree.latitude, tree.longitude], 17, { animate: true, duration: 1.2 });
-        setTimeout(() => {
-            if (state.markerClusterGroup) {
-                state.markerClusterGroup.zoomToShowLayer(marker, () => marker.openPopup());
-            } else {
-                marker.openPopup();
-            }
-            showToast(`📍 Showing Tree ${treeIdToCode(treeId)} — ${tree.species || 'Unknown'}`, 'info', 3000);
-        }, 1400);
-    }
-
-    // Clean URL without reload
-    const cleanUrl = window.location.pathname;
-    window.history.replaceState({}, '', cleanUrl);
 }
