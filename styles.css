@@ -1296,6 +1296,23 @@ body {
     box-shadow: var(--shadow) !important;
 }
 
+.leaflet-top.leaflet-left {
+    margin-left: 230px;
+    margin-top: 50px;
+}
+
+.leaflet-top.leaflet-right {
+    margin-top: 50px;
+}
+
+.layer-panel-header h3::after {
+    content: ' ▼';
+    font-size: 10px;
+    color: var(--text-muted);
+    transition: transform 0.2s ease;
+    display: none;
+}
+
 /* ==================== RESPONSIVE ==================== */
 
 @media (max-width: 768px) {
@@ -1305,8 +1322,43 @@ body {
 
     #layer-panel {
         position: absolute;
-        top: auto; bottom: 70px; left: 10px;
-        width: 200px; max-height: 260px;
+        top: 60px; bottom: auto; left: 10px;
+        width: 200px; max-height: 280px;
+        transition: max-height 0.3s ease;
+    }
+
+    #layer-panel.collapsed {
+        max-height: 48px;
+    }
+
+    #layer-panel.collapsed .layer-list,
+    #layer-panel.collapsed .active-layer-indicator {
+        display: none !important;
+    }
+
+    #layer-panel.collapsed .layer-panel-header {
+        border-bottom: none;
+    }
+
+    .layer-panel-header h3::after {
+        display: inline-block;
+    }
+
+    #layer-panel.collapsed .layer-panel-header h3::after {
+        transform: rotate(-90deg);
+    }
+
+    #user-profile-btn {
+        margin-left: auto;
+    }
+
+    .leaflet-top.leaflet-left {
+        margin-left: 0;
+        margin-top: 110px;
+    }
+
+    .leaflet-top.leaflet-right {
+        margin-top: 60px;
     }
 
     .project-name-header { max-width: 100px; font-size: 12px; }

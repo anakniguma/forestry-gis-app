@@ -487,6 +487,22 @@ async function initApp() {
     // Layer management
     document.getElementById('add-layer-btn')?.addEventListener('click', showAddLayerDialog);
 
+    // Collapsible layer panel on mobile
+    const layerPanel = document.getElementById('layer-panel');
+    if (layerPanel) {
+        const header = layerPanel.querySelector('.layer-panel-header');
+        if (header) {
+            header.style.cursor = 'pointer';
+            header.addEventListener('click', (e) => {
+                if (e.target.closest('#add-layer-btn')) return;
+                layerPanel.classList.toggle('collapsed');
+            });
+        }
+        if (window.innerWidth <= 768) {
+            layerPanel.classList.add('collapsed');
+        }
+    }
+
     // Online/offline
     window.addEventListener('online', async () => {
         showStatus('Back online!', 'online');
@@ -618,6 +634,15 @@ function clearAppState() {
     if (state.markerClusterGroup) state.markerClusterGroup.clearLayers();
     if (state.drawnItems) state.drawnItems.clearLayers();
     state.allFeatures = [];
+
+    const layerPanel = document.getElementById('layer-panel');
+    if (layerPanel) {
+        if (window.innerWidth <= 768) {
+            layerPanel.classList.add('collapsed');
+        } else {
+            layerPanel.classList.remove('collapsed');
+        }
+    }
 }
 
 function addFeatureToMap(feature, layer) {
