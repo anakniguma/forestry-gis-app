@@ -2,14 +2,15 @@
 // OpenGIS — Main Application
 // ========================================
 
-import { supabase, state, MAX_PHOTO_SIZE, SEARCH_DEBOUNCE_MS, LAYER_COLORS, DEFAULT_SCHEMA, IS_LOW_END } from './config.js';
+import { supabase, state, MAX_PHOTO_SIZE, SEARCH_DEBOUNCE_MS, LAYER_COLORS, DEFAULT_SCHEMA, HEALTH_STATUSES, IS_LOW_END } from './config.js';
 import { sanitize, debounce, validateFeatureInput, haptic, parseCSVImport, parseGeoJSONImport, fetchElevation, haversineDistance, featureIdToCode, featureCodeToId } from './utils.js';
 import {
     showToast, showLoading, hideLoading, showConfirm, initConfirmModal,
     showStatus, updateQueueBadge, openPanel, closePanel, closeAllPanels,
     initDashboard, updateDashboard, initInstallPrompt,
     initLightbox, openLightbox, initSwipeDismiss,
-    generateFormFields, readFormFields, renderLayerList, renderProjectCards
+    generateFormFields, readFormFields, renderLayerList, renderProjectCards,
+    renderPriorityTreesList, renderGrowthChart, renderSurveyRouteResult, renderPlotChecklist
 } from './ui.js';
 import {
     uploadPhoto, insertFeature, updateFeature, deleteFeature as deleteFeatureDB,
@@ -22,8 +23,14 @@ import {
 import {
     initMap, addTileLayers, addDrawControls, initGPS,
     createClusterGroup, initHeatmap,
-    updateHeatmap, toggleHeatmap, createMapLayer
+    updateHeatmap, toggleHeatmap, createMapLayer,
+    drawSurveyRoute, clearSurveyRoute, highlightTree
 } from './map.js';
+import { optimizeSurveyRoute, rankTreesByRisk } from './algorithms.js';
+import {
+    loadSpecies, loadTreesWithMeasurements, getTreeGrowthHistory,
+    insertMeasurement, getPlotCentroids, createSurveyVisit, loadMeasurements
+} from './forestry-data.js';
 
 // ========================================
 // DOM References
@@ -548,6 +555,12 @@ async function initApp() {
     window.addEventListener('edit-feature', (e) => openEditForm(e.detail));
     window.addEventListener('delete-feature', (e) => confirmDeleteFeature(e.detail));
 
+    // Growth history event (from tree popup)
+    window.addEventListener('show-growth', (e) => openGrowthHistory(e.detail));
+
+    // Forestry panels
+    initForestryPanels();
+
     // Swipe to dismiss
     initSwipeDismiss();
 
@@ -620,6 +633,7 @@ async function reloadData() {
         // Update UI
         renderLayerList(state.layers, handleLayerToggle, handleLayerSelect, confirmDeleteLayer);
         updateDashboard();
+        updateForestryDashboard();
 
     } catch (err) {
         console.error('Error loading data:', err);
@@ -1318,6 +1332,342 @@ function initPanelBackdrop() {
             closePanel(importPanel);
         } else if (exportPanel?.classList.contains('active')) {
             closePanel(exportPanel);
+        } else if (surveyRoutePanel?.classList.contains('active')) {
+            closePanel(surveyRoutePanel);
+        } else if (priorityTreesPanel?.classList.contains('active')) {
+            closePanel(priorityTreesPanel);
+        } else if (growthHistoryPanel?.classList.contains('active')) {
+            closePanel(growthHistoryPanel);
         }
     });
 }
+
+
+// ========================================
+// Forestry — Growth Monitoring
+// ========================================
+
+const surveyRoutePanel = document.getElementById('survey-route-panel');
+const priorityTreesPanel = document.getElementById('priority-trees-panel');
+const growthHistoryPanel = document.getElementById('growth-history-panel');
+
+// Track selected plots for route planning
+let selectedPlotIds = new Set();
+let computedRoute = null;
+
+function initForestryPanels() {
+    // --- Survey Route Panel ---
+    document.getElementById('survey-route-toggle')?.addEventListener('click', () => {
+        closeAllPanels();
+        openSurveyRoutePanel();
+    });
+
+    document.getElementById('cancel-route-btn')?.addEventListener('click', () => {
+        closePanel(surveyRoutePanel);
+    });
+
+    document.getElementById('compute-route-btn')?.addEventListener('click', computeRoute);
+    document.getElementById('draw-route-btn')?.addEventListener('click', drawRouteOnMap);
+    document.getElementById('save-route-btn')?.addEventListener('click', saveRoute);
+    document.getElementById('clear-route-btn')?.addEventListener('click', clearRouteFromMap);
+
+    // --- Priority Trees Panel ---
+    document.getElementById('priority-trees-toggle')?.addEventListener('click', () => {
+        closeAllPanels();
+        openPriorityTreesPanel();
+    });
+
+    document.getElementById('close-priority-btn')?.addEventListener('click', () => {
+        closePanel(priorityTreesPanel);
+    });
+
+    document.getElementById('refresh-priority-btn')?.addEventListener('click', () => {
+        openPriorityTreesPanel();
+    });
+
+    // --- Growth History Panel ---
+    document.getElementById('close-growth-btn')?.addEventListener('click', () => {
+        closePanel(growthHistoryPanel);
+        state.currentGrowthFeatureId = null;
+    });
+
+    document.getElementById('save-measurement-btn')?.addEventListener('click', saveMeasurement);
+}
+
+
+// ========================================
+// Survey Route
+// ========================================
+
+function openSurveyRoutePanel() {
+    selectedPlotIds = new Set();
+    computedRoute = null;
+
+    const plots = getPlotCentroids();
+    const checklist = document.getElementById('plot-checklist');
+    const resultDiv = document.getElementById('route-result');
+    const computeBtn = document.getElementById('compute-route-btn');
+    const drawBtn = document.getElementById('draw-route-btn');
+    const saveBtn = document.getElementById('save-route-btn');
+    const clearBtn = document.getElementById('clear-route-btn');
+
+    if (resultDiv) resultDiv.style.display = 'none';
+    if (drawBtn) drawBtn.style.display = 'none';
+    if (saveBtn) saveBtn.style.display = 'none';
+    if (clearBtn) clearBtn.style.display = 'none';
+    if (computeBtn) computeBtn.disabled = true;
+
+    renderPlotChecklist(checklist, plots, selectedPlotIds, (plotId, checked) => {
+        if (checked) selectedPlotIds.add(plotId);
+        else selectedPlotIds.delete(plotId);
+        if (computeBtn) computeBtn.disabled = selectedPlotIds.size < 2;
+    });
+
+    openPanel(surveyRoutePanel);
+}
+
+function computeRoute() {
+    const plots = getPlotCentroids();
+    const selected = plots.filter(p => selectedPlotIds.has(p.id));
+
+    if (selected.length < 2) {
+        showToast('Select at least 2 plots', 'warning');
+        return;
+    }
+
+    // Use GPS position or map center as start point
+    const center = state.map.getCenter();
+    const startPoint = state.gpsMarker
+        ? state.gpsMarker.getLatLng()
+        : { lat: center.lat, lng: center.lng };
+
+    computedRoute = optimizeSurveyRoute(selected, startPoint);
+
+    const resultDiv = document.getElementById('route-result');
+    const drawBtn = document.getElementById('draw-route-btn');
+    const saveBtn = document.getElementById('save-route-btn');
+
+    renderSurveyRouteResult(resultDiv, computedRoute);
+    if (resultDiv) resultDiv.style.display = 'block';
+    if (drawBtn) drawBtn.style.display = 'inline-flex';
+    if (saveBtn) saveBtn.style.display = 'inline-flex';
+
+    showToast(`Route optimized: ${computedRoute.orderedPlots.length} stops`, 'success');
+    haptic();
+}
+
+function drawRouteOnMap() {
+    if (!computedRoute) return;
+
+    // Clear any existing route
+    clearRouteFromMap();
+
+    state.surveyRouteLayer = drawSurveyRoute(state.map, computedRoute.orderedPlots);
+
+    const clearBtn = document.getElementById('clear-route-btn');
+    if (clearBtn) clearBtn.style.display = 'inline-flex';
+
+    closePanel(surveyRoutePanel);
+    showToast('Route drawn on map', 'success');
+}
+
+function clearRouteFromMap() {
+    if (state.surveyRouteLayer) {
+        clearSurveyRoute(state.map, state.surveyRouteLayer);
+        state.surveyRouteLayer = null;
+    }
+    const clearBtn = document.getElementById('clear-route-btn');
+    if (clearBtn) clearBtn.style.display = 'none';
+}
+
+async function saveRoute() {
+    if (!computedRoute || !state.activeProject) return;
+
+    try {
+        await createSurveyVisit({
+            project_id: state.activeProject.id,
+            plot_ids: computedRoute.orderedPlots.map(p => p.id),
+            computed_route: {
+                order: computedRoute.orderedPlots.map(p => p.id),
+                totalDistanceM: computedRoute.totalDistanceM,
+                algorithm: computedRoute.algorithm,
+            },
+        });
+        showToast('Survey visit saved!', 'success');
+        haptic();
+    } catch (err) {
+        showToast('Error saving visit: ' + err.message, 'error');
+    }
+}
+
+
+// ========================================
+// Priority Trees
+// ========================================
+
+async function openPriorityTreesPanel() {
+    openPanel(priorityTreesPanel);
+
+    const list = document.getElementById('priority-trees-list');
+    if (list) list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted)"><span class="spinner"></span> Loading...</div>';
+
+    try {
+        const treesWithMeasurements = await loadTreesWithMeasurements(state.activeProject.id);
+        const ranked = rankTreesByRisk(treesWithMeasurements);
+        state.priorityTrees = ranked;
+
+        renderPriorityTreesList(list, ranked, (featureId, feature) => {
+            closePanel(priorityTreesPanel);
+            highlightTree(state.map, feature);
+        });
+
+        // Update dashboard at-risk count
+        updateForestryDashboard();
+    } catch (err) {
+        console.error('Error loading priority trees:', err);
+        showToast('Error loading tree data: ' + err.message, 'error');
+        if (list) list.innerHTML = '<div class="priority-empty"><span>❌</span><p>Error loading data</p></div>';
+    }
+}
+
+
+// ========================================
+// Growth History
+// ========================================
+
+async function openGrowthHistory(featureId) {
+    state.currentGrowthFeatureId = featureId;
+    state.map.closePopup();
+    closeAllPanels();
+
+    // Get tree info for title
+    const item = state.allFeatures.find(f => f.feature.id === featureId);
+    const treeName = item?.feature?.attributes?.name
+        || item?.feature?.attributes?.species
+        || `Tree #${featureId}`;
+
+    const title = document.getElementById('growth-panel-title');
+    if (title) title.textContent = `📈 ${treeName}`;
+
+    openPanel(growthHistoryPanel);
+
+    // Destroy previous chart
+    if (state.growthChartInstance) {
+        state.growthChartInstance.destroy();
+        state.growthChartInstance = null;
+    }
+
+    try {
+        const { measurements, species } = await getTreeGrowthHistory(featureId);
+
+        // Render chart
+        state.growthChartInstance = renderGrowthChart('growth-chart', measurements);
+
+        // Render measurement list
+        const listEl = document.getElementById('growth-measurements-list');
+        if (listEl) {
+            if (measurements.length === 0) {
+                listEl.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:12px">No measurements recorded yet</div>';
+            } else {
+                listEl.innerHTML = measurements.map(m => {
+                    const date = new Date(m.measured_at).toLocaleDateString('en-US', {
+                        month: 'short', day: 'numeric', year: 'numeric'
+                    });
+                    const healthIcon = { 'Healthy': '💚', 'Stressed': '💛', 'Diseased': '🧡', 'Dead': '💀' };
+                    return `
+                        <div class="growth-meas-item">
+                            <span class="growth-meas-date">${date}</span>
+                            <div class="growth-meas-stats">
+                                <span>⌀ ${m.dbh_cm ?? '—'} cm</span>
+                                <span>↕ ${m.height_m ?? '—'} m</span>
+                                <span>${healthIcon[m.health_status] || '❓'} ${m.health_status || '—'}</span>
+                            </div>
+                        </div>`;
+                }).join('');
+            }
+        }
+
+        // Reset add-measurement form
+        const section = document.getElementById('add-measurement-section');
+        if (section) section.open = false;
+
+    } catch (err) {
+        console.error('Error loading growth history:', err);
+        showToast('Error loading measurements: ' + err.message, 'error');
+    }
+}
+
+async function saveMeasurement() {
+    if (!state.currentGrowthFeatureId) return;
+
+    const dbh = document.getElementById('meas-dbh')?.value;
+    const height = document.getElementById('meas-height')?.value;
+    const health = document.getElementById('meas-health')?.value;
+    const crown = document.getElementById('meas-crown')?.value;
+    const notes = document.getElementById('meas-notes')?.value;
+
+    if (!dbh && !height) {
+        showToast('Enter at least DBH or height', 'warning');
+        return;
+    }
+
+    try {
+        await insertMeasurement({
+            feature_id: state.currentGrowthFeatureId,
+            dbh_cm: dbh ? parseFloat(dbh) : null,
+            height_m: height ? parseFloat(height) : null,
+            health_status: health || 'Healthy',
+            crown_diameter_m: crown ? parseFloat(crown) : null,
+            notes: notes || null,
+        });
+
+        showToast('Measurement saved!', 'success');
+        haptic();
+
+        // Clear form
+        ['meas-dbh', 'meas-height', 'meas-crown', 'meas-notes'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        const healthSelect = document.getElementById('meas-health');
+        if (healthSelect) healthSelect.value = 'Healthy';
+
+        // Refresh the growth history view
+        await openGrowthHistory(state.currentGrowthFeatureId);
+
+    } catch (err) {
+        showToast('Error saving measurement: ' + err.message, 'error');
+    }
+}
+
+
+// ========================================
+// Forestry Dashboard Extension
+// ========================================
+
+async function updateForestryDashboard() {
+    try {
+        // Species count
+        if (!state.speciesMap) {
+            const speciesList = await loadSpecies();
+            state.speciesMap = {};
+            state.speciesList = speciesList;
+            speciesList.forEach(s => { state.speciesMap[s.id] = s; });
+        }
+
+        const speciesCountEl = document.getElementById('stat-species-count');
+        if (speciesCountEl) speciesCountEl.textContent = state.speciesList.length;
+
+        // At-risk count (trees with risk >= medium)
+        const atRiskCount = state.priorityTrees.filter(
+            t => t.riskScore >= 25
+        ).length;
+
+        const atRiskEl = document.getElementById('stat-atrisk-count');
+        if (atRiskEl) atRiskEl.textContent = atRiskCount;
+
+    } catch (err) {
+        console.warn('Could not update forestry dashboard:', err);
+    }
+}
+

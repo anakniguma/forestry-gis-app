@@ -339,6 +339,79 @@
             </div>
         </div>
 
+        <!-- Survey Route Panel -->
+        <div id="survey-route-panel" class="panel">
+            <div class="bottom-sheet-handle"></div>
+            <h3>🛣️ Plan Survey Route</h3>
+            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+                Select sample plots to visit, then compute the optimal route.
+            </p>
+            <div id="plot-checklist" class="plot-checklist"></div>
+            <div id="route-result" class="route-result" style="display:none"></div>
+            <div class="btn-row">
+                <button id="compute-route-btn" class="btn btn-primary" disabled>Optimize Route</button>
+                <button id="draw-route-btn" class="btn btn-secondary" style="display:none">Draw on Map</button>
+                <button id="save-route-btn" class="btn btn-secondary" style="display:none">Save Visit</button>
+            </div>
+            <div class="btn-row" style="margin-top: 4px">
+                <button id="clear-route-btn" class="btn btn-secondary" style="display:none">Clear Route</button>
+                <button id="cancel-route-btn" class="btn btn-secondary">Close</button>
+            </div>
+        </div>
+
+        <!-- Priority Trees Panel -->
+        <div id="priority-trees-panel" class="panel">
+            <div class="bottom-sheet-handle"></div>
+            <h3>⚠️ Priority Trees</h3>
+            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+                Trees ranked by risk score. Click a tree to locate it on the map.
+            </p>
+            <div id="priority-trees-list" class="priority-trees-list"></div>
+            <div class="btn-row">
+                <button id="refresh-priority-btn" class="btn btn-secondary">🔄 Refresh</button>
+                <button id="close-priority-btn" class="btn btn-secondary">Close</button>
+            </div>
+        </div>
+
+        <!-- Growth History Panel -->
+        <div id="growth-history-panel" class="panel">
+            <div class="bottom-sheet-handle"></div>
+            <h3 id="growth-panel-title">📈 Growth History</h3>
+            <div class="growth-chart-container">
+                <canvas id="growth-chart" height="200"></canvas>
+            </div>
+            <div id="growth-measurements-list" class="growth-measurements-list"></div>
+            <details id="add-measurement-section" class="add-measurement-section">
+                <summary>➕ Add Measurement</summary>
+                <div class="measurement-form">
+                    <label>DBH (cm)
+                        <input id="meas-dbh" type="number" min="0" max="500" step="0.1" placeholder="e.g. 25.0" />
+                    </label>
+                    <label>Height (m)
+                        <input id="meas-height" type="number" min="0" max="150" step="0.1" placeholder="e.g. 12.5" />
+                    </label>
+                    <label>Health Status
+                        <select id="meas-health">
+                            <option value="Healthy">Healthy</option>
+                            <option value="Stressed">Stressed</option>
+                            <option value="Diseased">Diseased</option>
+                            <option value="Dead">Dead</option>
+                        </select>
+                    </label>
+                    <label>Crown Ø (m)
+                        <input id="meas-crown" type="number" min="0" max="50" step="0.1" placeholder="Optional" />
+                    </label>
+                    <label>Notes
+                        <textarea id="meas-notes" rows="2" maxlength="500" placeholder="Observations..."></textarea>
+                    </label>
+                    <button id="save-measurement-btn" class="btn btn-primary">Save Measurement</button>
+                </div>
+            </details>
+            <div class="btn-row" style="margin-top: 8px">
+                <button id="close-growth-btn" class="btn btn-secondary">Close</button>
+            </div>
+        </div>
+
         <!-- Dashboard Sidebar -->
         <button id="dashboard-toggle" title="Dashboard">📊</button>
         <div id="dashboard-panel">
@@ -363,6 +436,14 @@
                 <div class="stat-card">
                     <span class="stat-value" id="stat-total-polygons">0</span>
                     <span class="stat-label">Areas</span>
+                </div>
+                <div class="stat-card forestry-stat">
+                    <span class="stat-value" id="stat-species-count" style="color: #51CF66">0</span>
+                    <span class="stat-label">🌿 Species</span>
+                </div>
+                <div class="stat-card forestry-stat">
+                    <span class="stat-value" id="stat-atrisk-count" style="color: #FF6B6B">0</span>
+                    <span class="stat-label">⚠️ At-Risk Trees</span>
                 </div>
             </div>
 
@@ -393,6 +474,14 @@
             <button class="map-fab" id="heatmap-toggle" title="Toggle Heatmap">
                 🔥
                 <span class="fab-tooltip">Heatmap</span>
+            </button>
+            <button class="map-fab forestry-fab" id="survey-route-toggle" title="Plan Survey Route">
+                🛣️
+                <span class="fab-tooltip">Survey Route</span>
+            </button>
+            <button class="map-fab forestry-fab" id="priority-trees-toggle" title="Priority Trees">
+                ⚠️
+                <span class="fab-tooltip">At-Risk Trees</span>
             </button>
         </div>
 

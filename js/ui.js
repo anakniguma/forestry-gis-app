@@ -514,5 +514,261 @@ export function renderProjectCards(projects, onOpen, onDelete) {
     });
 }
 
+
+// ========================================
+// Forestry — Growth Monitoring UI
+// ========================================
+
+// --- Priority Trees List ---
+/**
+ * Render a ranked list of at-risk trees with risk badges.
+ * @param {HTMLElement} container
+ * @param {Array} rankedTrees - Output from rankTreesByRisk()
+ * @param {Function} onSelect - Called with featureId when a tree is clicked
+ */
+export function renderPriorityTreesList(container, rankedTrees, onSelect) {
+    if (!container) return;
+    container.innerHTML = '';
+
+    if (!rankedTrees || rankedTrees.length === 0) {
+        container.innerHTML = `
+            <div class="priority-empty">
+                <span>✅</span>
+                <p>No at-risk trees detected</p>
+                <small>All monitored trees appear healthy</small>
+            </div>`;
+        return;
+    }
+
+    rankedTrees.forEach((item, idx) => {
+        const div = document.createElement('div');
+        div.className = 'priority-tree-item';
+        div.dataset.featureId = item.featureId;
+
+        const attrs = item.feature?.attributes || {};
+        const treeName = attrs.name || attrs.species || `Tree #${item.featureId}`;
+        const speciesName = item.species?.name || attrs.species || '—';
+        const latestHealth = item.latestMeasurement?.health_status || '—';
+        const latestDbh = item.latestMeasurement?.dbh_cm
+            ? `${item.latestMeasurement.dbh_cm} cm`
+            : '—';
+
+        // Risk badge color
+        const badgeClass = `risk-badge risk-${item.riskLevel}`;
+
+        div.innerHTML = `
+            <div class="priority-tree-rank">${idx + 1}</div>
+            <div class="priority-tree-info">
+                <div class="priority-tree-name">
+                    🌳 ${sanitize(treeName)}
+                    <span class="${badgeClass}">${item.riskScore}</span>
+                </div>
+                <div class="priority-tree-details">
+                    <span>${sanitize(speciesName)}</span>
+                    <span>⌀ ${latestDbh}</span>
+                    <span>${_healthIcon(latestHealth)} ${latestHealth}</span>
+                </div>
+            </div>
+        `;
+
+        div.addEventListener('click', () => {
+            if (onSelect) onSelect(item.featureId, item.feature);
+        });
+
+        container.appendChild(div);
+    });
+}
+
+function _healthIcon(status) {
+    const map = { 'Healthy': '💚', 'Stressed': '💛', 'Diseased': '🧡', 'Dead': '💀' };
+    return map[status] || '❓';
+}
+
+
+// --- Growth History Chart ---
+/**
+ * Render a line chart showing DBH and height measurements over time.
+ * Requires Chart.js to be loaded.
+ * @param {string} canvasId - ID of the canvas element
+ * @param {Array} measurements - Chronologically ordered measurements
+ * @returns {Chart|null} The Chart.js instance
+ */
+export function renderGrowthChart(canvasId, measurements) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || typeof Chart === 'undefined') return null;
+
+    if (!measurements || measurements.length === 0) {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#64748b';
+        ctx.font = '13px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('No measurements yet', canvas.width / 2, canvas.height / 2);
+        return null;
+    }
+
+    const labels = measurements.map(m =>
+        new Date(m.measured_at).toLocaleDateString('en-US', {
+            month: 'short', year: '2-digit'
+        })
+    );
+
+    return new Chart(canvas, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: 'DBH (cm)',
+                    data: measurements.map(m => m.dbh_cm),
+                    borderColor: '#51CF66',
+                    backgroundColor: 'rgba(81, 207, 102, 0.1)',
+                    borderWidth: 2,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#51CF66',
+                    fill: true,
+                    tension: 0.3,
+                    yAxisID: 'y',
+                },
+                {
+                    label: 'Height (m)',
+                    data: measurements.map(m => m.height_m),
+                    borderColor: '#4C9AFF',
+                    backgroundColor: 'rgba(76, 154, 255, 0.1)',
+                    borderWidth: 2,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#4C9AFF',
+                    fill: true,
+                    tension: 0.3,
+                    yAxisID: 'y1',
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: { color: '#94a3b8', font: { family: 'Inter', size: 11 }, padding: 8 },
+                },
+            },
+            scales: {
+                x: {
+                    ticks: { color: '#64748b', font: { size: 10 } },
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                },
+                y: {
+                    type: 'linear',
+                    position: 'left',
+                    title: { display: true, text: 'DBH (cm)', color: '#51CF66', font: { size: 11 } },
+                    ticks: { color: '#51CF66', font: { size: 10 } },
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                },
+                y1: {
+                    type: 'linear',
+                    position: 'right',
+                    title: { display: true, text: 'Height (m)', color: '#4C9AFF', font: { size: 11 } },
+                    ticks: { color: '#4C9AFF', font: { size: 10 } },
+                    grid: { drawOnChartArea: false },
+                },
+            },
+        },
+    });
+}
+
+
+// --- Survey Route Result ---
+/**
+ * Render the computed survey route summary.
+ * @param {HTMLElement} container
+ * @param {{orderedPlots, totalDistanceM, algorithm}} route
+ */
+export function renderSurveyRouteResult(container, route) {
+    if (!container || !route) return;
+
+    const totalStr = route.totalDistanceM > 1000
+        ? (route.totalDistanceM / 1000).toFixed(2) + ' km'
+        : Math.round(route.totalDistanceM) + ' m';
+
+    let stopsHtml = route.orderedPlots.map((p, i) => {
+        const distStr = p.distFromPrev > 1000
+            ? (p.distFromPrev / 1000).toFixed(1) + ' km'
+            : Math.round(p.distFromPrev) + ' m';
+        return `
+            <div class="route-stop">
+                <span class="route-stop-badge">${i + 1}</span>
+                <span class="route-stop-name">${sanitize(p.name || 'Plot')}</span>
+                <span class="route-stop-dist">📏 ${distStr}</span>
+            </div>`;
+    }).join('');
+
+    container.innerHTML = `
+        <div class="route-summary">
+            <div class="route-summary-stat">
+                <span class="route-stat-value">${route.orderedPlots.length}</span>
+                <span class="route-stat-label">Stops</span>
+            </div>
+            <div class="route-summary-stat">
+                <span class="route-stat-value">${totalStr}</span>
+                <span class="route-stat-label">Total Distance</span>
+            </div>
+            <div class="route-summary-stat">
+                <span class="route-stat-value">${route.algorithm}</span>
+                <span class="route-stat-label">Algorithm</span>
+            </div>
+        </div>
+        <div class="route-stops-list">
+            ${stopsHtml}
+        </div>
+    `;
+}
+
+
+// --- Plot Checklist ---
+/**
+ * Render checkboxes for selecting sample plots for route planning.
+ * @param {HTMLElement} container
+ * @param {Array<{id, name, lat, lng}>} plots - Available plots with centroids
+ * @param {Set} selectedIds - Currently selected plot IDs
+ * @param {Function} onToggle - Called with (plotId, isChecked)
+ */
+export function renderPlotChecklist(container, plots, selectedIds, onToggle) {
+    if (!container) return;
+    container.innerHTML = '';
+
+    if (!plots || plots.length === 0) {
+        container.innerHTML = `
+            <div class="priority-empty">
+                <span>📐</span>
+                <p>No sample plots found</p>
+                <small>Create polygon features in a "Sample Plots" layer first</small>
+            </div>`;
+        return;
+    }
+
+    plots.forEach(plot => {
+        const div = document.createElement('label');
+        div.className = 'plot-check-item';
+
+        const checked = selectedIds?.has(plot.id) ? 'checked' : '';
+        div.innerHTML = `
+            <input type="checkbox" value="${plot.id}" ${checked} />
+            <span class="plot-check-name">📐 ${sanitize(plot.name)}</span>
+            <span class="plot-check-coords">${plot.lat.toFixed(4)}, ${plot.lng.toFixed(4)}</span>
+        `;
+
+        const checkbox = div.querySelector('input');
+        checkbox.addEventListener('change', () => {
+            if (onToggle) onToggle(plot.id, checkbox.checked);
+        });
+
+        container.appendChild(div);
+    });
+}
+
+
 // --- Haptic wrapper ---
 export { haptic } from './utils.js';

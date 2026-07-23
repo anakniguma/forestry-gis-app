@@ -312,6 +312,9 @@ export async function createForestryProject() {
     });
 
     // Create Trees layer
+    // NOTE: species_id is stored directly on the feature row (FK to species table).
+    // The 'species' text attribute is kept for backward compatibility / quick labeling.
+    // The species_id dropdown is populated dynamically in the UI from the species table.
     await createLayer({
         project_id: project.id,
         name: 'Trees',
@@ -323,7 +326,7 @@ export async function createForestryProject() {
             { key: 'dbh', label: 'DBH (cm)', type: 'number', required: false, min: 0, max: 500, step: 0.1 },
             { key: 'height', label: 'Height (m)', type: 'number', required: false, min: 0, max: 150, step: 0.1 },
             { key: 'elevation', label: 'Elevation (m)', type: 'number', required: false, readonly: true },
-            { key: 'health', label: 'Health Status', type: 'select', required: false, options: ['Healthy', 'Diseased', 'Dead'] },
+            { key: 'health', label: 'Health Status', type: 'select', required: false, options: ['Healthy', 'Stressed', 'Diseased', 'Dead'] },
             { key: 'notes', label: 'Notes', type: 'textarea', required: false },
         ],
         visible: true,

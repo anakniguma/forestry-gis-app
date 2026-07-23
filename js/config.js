@@ -64,7 +64,7 @@ export const FORESTRY_TREE_SCHEMA = [
     { key: 'dbh', label: 'DBH (cm)', type: 'number', required: false, min: 0, max: 500, step: 0.1 },
     { key: 'height', label: 'Height (m)', type: 'number', required: false, min: 0, max: 150, step: 0.1 },
     { key: 'elevation', label: 'Elevation (m)', type: 'number', required: false, readonly: true },
-    { key: 'health', label: 'Health Status', type: 'select', required: false, options: ['Healthy', 'Diseased', 'Dead'] },
+    { key: 'health', label: 'Health Status', type: 'select', required: false, options: ['Healthy', 'Diseased', 'Dead', 'Stressed'] },
     { key: 'notes', label: 'Notes', type: 'textarea', required: false },
 ];
 
@@ -72,6 +72,17 @@ export const FORESTRY_PLOT_SCHEMA = [
     { key: 'name', label: 'Plot Name', type: 'text', required: false },
     { key: 'notes', label: 'Notes', type: 'textarea', required: false },
 ];
+
+// Tree Growth Monitoring constants
+export const HEALTH_STATUSES = ['Healthy', 'Stressed', 'Diseased', 'Dead'];
+
+export const RISK_THRESHOLDS = {
+    low: 25,
+    medium: 50,
+    high: 75,
+};
+
+export const CONSERVATION_STATUSES = ['LC', 'NT', 'VU', 'EN', 'CR', 'EW', 'EX', 'DD'];
 
 // Low-end device detection
 export const IS_LOW_END = (() => {
@@ -125,4 +136,12 @@ export const state = {
     deferredInstallPrompt: null,
     realtimeChannel: null,
     isLoadingData: false,
+
+    // Forestry — Growth Monitoring
+    surveyRouteLayer: null,       // L.polyline drawn on map for planned route
+    priorityTrees: [],            // Ranked tree risk objects from rankTreesByRisk()
+    speciesMap: null,             // { speciesId: speciesObj } cache
+    speciesList: [],              // All species from DB
+    currentGrowthFeatureId: null, // Feature ID whose growth history panel is open
+    growthChartInstance: null,    // Chart.js instance for growth history
 };

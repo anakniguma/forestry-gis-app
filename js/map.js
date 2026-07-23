@@ -187,6 +187,12 @@ export function createFeatureMarker(feature, layer) {
         timeHtml = `<div class="popup-timestamp">🕐 ${date}</div>`;
     }
 
+    // Show "Growth" button only for tree-layer features (by layer name convention)
+    const isTreeLayer = layer?.name?.toLowerCase()?.includes('tree');
+    const growthBtn = isTreeLayer
+        ? `<button class="popup-growth-btn" onclick="window.dispatchEvent(new CustomEvent('show-growth', {detail:${feature.id}}))">📈 Growth</button>`
+        : '';
+
     const popupContent = `
         <div>
             <div class="popup-header" style="border-left: 3px solid ${color}; padding-left: 8px; margin-bottom: 6px;">
@@ -202,6 +208,7 @@ export function createFeatureMarker(feature, layer) {
             ${timeHtml}
             <div class="popup-actions">
                 <button class="popup-edit-btn" onclick="window.dispatchEvent(new CustomEvent('edit-feature', {detail:${feature.id}}))">✏️ Edit</button>
+                ${growthBtn}
                 <button class="popup-delete-btn" onclick="window.dispatchEvent(new CustomEvent('delete-feature', {detail:${feature.id}}))">🗑️ Delete</button>
             </div>
         </div>
@@ -380,4 +387,98 @@ export function createMapLayer(feature, layer) {
         return createFeaturePolygon(feature, layer);
     }
     return null;
+}
+
+
+// ========================================
+// Survey Route Drawing
+// ========================================
+
+/**
+ * Draw an animated dashed polyline connecting the ordered plots.
+ * @param {L.Map} map
+ * @param {Array<{lat, lng, name, distFromPrev?}>} orderedPlots
+ * @returns {L.LayerGroup} The route layer group (polyline + numbered markers)
+ */
+export function drawSurveyRoute(map, orderedPlots) {
+    if (!orderedPlots || orderedPlots.length === 0) return null;
+
+    const group = L.layerGroup();
+    const latlngs = orderedPlots.map(p => [p.lat, p.lng]);
+
+    // Animated dashed polyline
+    const polyline = L.polyline(latlngs, {
+        color: '#FF922B',
+        weight: 3,
+        opacity: 0.85,
+        dashArray: '10, 8',
+        className: 'survey-route-line', // For CSS animation
+    });
+    group.addLayer(polyline);
+
+    // Numbered stop markers
+    orderedPlots.forEach((plot, idx) => {
+        const marker = L.marker([plot.lat, plot.lng], {
+            icon: L.divIcon({
+                className: 'survey-route-marker',
+                html: `<div class="route-stop-number">${idx + 1}</div>`,
+                iconSize: [28, 28],
+                iconAnchor: [14, 14],
+            }),
+        });
+
+        const distStr = plot.distFromPrev
+            ? (plot.distFromPrev > 1000
+                ? (plot.distFromPrev / 1000).toFixed(1) + ' km'
+                : Math.round(plot.distFromPrev) + ' m')
+            : '';
+
+        marker.bindPopup(`
+            <strong>Stop ${idx + 1}: ${sanitize(plot.name || 'Plot')}</strong>
+            ${distStr ? `<br/><small>📏 ${distStr} from previous</small>` : ''}
+        `);
+
+        group.addLayer(marker);
+    });
+
+    group.addTo(map);
+
+    // Fit map to route bounds
+    if (latlngs.length > 1) {
+        map.fitBounds(L.latLngBounds(latlngs).pad(0.15));
+    }
+
+    return group;
+}
+
+/**
+ * Remove the survey route layer from the map.
+ */
+export function clearSurveyRoute(map, routeLayer) {
+    if (routeLayer) {
+        map.removeLayer(routeLayer);
+    }
+}
+
+/**
+ * Fly to a specific tree and briefly pulse-highlight it.
+ */
+export function highlightTree(map, feature) {
+    if (!feature?.coordinates) return;
+    const { lat, lng } = feature.coordinates;
+
+    map.flyTo([lat, lng], 18, { duration: 0.8 });
+
+    // Pulse ring effect
+    const pulse = L.circleMarker([lat, lng], {
+        radius: 18,
+        fillColor: '#FF6B6B',
+        fillOpacity: 0.3,
+        color: '#FF6B6B',
+        weight: 2,
+        className: 'tree-highlight-pulse',
+    }).addTo(map);
+
+    // Remove after animation
+    setTimeout(() => map.removeLayer(pulse), 2500);
 }
