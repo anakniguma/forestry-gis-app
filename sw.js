@@ -3,7 +3,7 @@
 // Enhanced: Cache limits (#38), Background Sync (#25)
 // ========================================
 
-const CACHE_NAME = 'forestry-mapper-v9';
+const CACHE_NAME = 'forestry-mapper-v10';
 const TILE_CACHE = 'map-tiles-v2';
 const MAX_TILE_CACHE_ITEMS = 500; // LRU eviction (#38)
 
@@ -20,14 +20,10 @@ const PRECACHE_URLS = [
     './js/data.js',
     './js/map.js',
     './js/app.js',
-    'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
-    'https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css',
-    'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css',
-    'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css',
-    'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
-    'https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js',
-    'https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js',
-    'https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js',
+    'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css',
+    'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js',
+    'https://unpkg.com/@mapbox/mapbox-gl-draw@1.4.3/dist/mapbox-gl-draw.css',
+    'https://unpkg.com/@mapbox/mapbox-gl-draw@1.4.3/dist/mapbox-gl-draw.js',
     'https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js',
     'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'
 ];
@@ -65,7 +61,8 @@ self.addEventListener('fetch', (event) => {
     // Map tiles: stale-while-revalidate with cache limit
     if (url.hostname.includes('tile.openstreetmap.org') ||
         url.hostname.includes('arcgisonline.com') ||
-        url.hostname.includes('basemaps.cartocdn.com')) {
+        url.hostname.includes('basemaps.cartocdn.com') ||
+        url.hostname.includes('api.maptiler.com')) {
         event.respondWith(handleTileRequest(event.request));
         return;
     }

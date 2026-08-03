@@ -22,8 +22,8 @@ import {
 } from './data.js';
 import {
     initMap, addTileLayers, addDrawControls, initGPS,
-    createClusterGroup, initHeatmap,
-    updateHeatmap, toggleHeatmap, createMapLayer,
+    initHeatmap, updateHeatmap, toggleHeatmap,
+    renderAllFeatures, clearAllFeatures,
     drawSurveyRoute, clearSurveyRoute, highlightTree
 } from './map.js';
 import { optimizeSurveyRoute, rankTreesByRisk } from './algorithms.js';
@@ -415,15 +415,8 @@ async function initApp() {
     const map = initMap('map');
     addTileLayers(map);
 
-    state.drawnItems = new L.FeatureGroup();
-    map.addLayer(state.drawnItems);
-
-    state.markerClusterGroup = createClusterGroup();
-    if (state.markerClusterGroup) {
-        map.addLayer(state.markerClusterGroup);
-    }
-
-    addDrawControls(map, state.drawnItems);
+    // MapboxDraw for drawing features
+    const draw = addDrawControls(map);
     initGPS(map);
 
     state.heatLayer = initHeatmap(map);
@@ -442,14 +435,18 @@ async function initApp() {
     // Photo input
     if (photoInput) photoInput.addEventListener('change', handlePhotoChange);
 
-    // Draw events
-    map.on('draw:created', handleDrawCreated);
-    map.on('draw:edited', handleDrawEdited);
-    map.on('draw:deleted', handleDrawDeleted);
+    // MapboxDraw events (MapLibre Draw uses draw.create / draw.update / draw.delete)
+    map.on('draw.create', handleDrawCreated);
+    map.on('draw.update', handleDrawEdited);
+    map.on('draw.delete', handleDrawDeleted);
 
     // Form buttons
     document.getElementById('cancel-feature-btn')?.addEventListener('click', () => {
-        if (state.currentLayer) { map.removeLayer(state.currentLayer); state.currentLayer = null; }
+        // Remove the drawn feature from MapboxDraw
+        if (state.currentDrawId) {
+            state.drawControl.delete(state.currentDrawId);
+            state.currentDrawId = null;
+        }
         closePanel(featureFormPanel);
     });
 
@@ -564,6 +561,11 @@ async function initApp() {
     // Swipe to dismiss
     initSwipeDismiss();
 
+    // Re-render features after MapLibre style change (base map switch)
+    window.addEventListener('maplibre-style-changed', () => {
+        reloadData();
+    });
+
     // Realtime
     initRealtime(
         (payload) => {
@@ -588,7 +590,15 @@ async function initApp() {
     }
 
     updateQueueBadge();
-    await reloadData();
+
+    // Wait for map to load before rendering data
+    if (map.loaded()) {
+        await reloadData();
+    } else {
+        map.on('load', async () => {
+            await reloadData();
+        });
+    }
 }
 
 // ========================================
@@ -618,16 +628,15 @@ async function reloadData() {
         const layerMap = {};
         layers.forEach(l => { layerMap[l.id] = l; });
 
-        // Add features to map
-        features.forEach(feature => {
-            const layer = layerMap[feature.layer_id];
-            if (!layer) return;
-            addFeatureToMap(feature, layer);
-        });
+        // Render all features on the MapLibre map
+        const map = state.map;
+        if (map && map.isStyleLoaded()) {
+            state.allFeatures = renderAllFeatures(map, features, layerMap);
 
-        // Update heatmap
-        if (state.heatLayer) {
-            updateHeatmap(state.heatLayer, features);
+            // Update heatmap
+            if (state.heatLayer) {
+                updateHeatmap(map, features);
+            }
         }
 
         // Update UI
@@ -645,8 +654,10 @@ async function reloadData() {
 }
 
 function clearAppState() {
-    if (state.markerClusterGroup) state.markerClusterGroup.clearLayers();
-    if (state.drawnItems) state.drawnItems.clearLayers();
+    // Clear all MapLibre features (markers, sources, layers)
+    if (state.map && state.map.isStyleLoaded()) {
+        clearAllFeatures(state.map);
+    }
     state.allFeatures = [];
 
     const layerPanel = document.getElementById('layer-panel');
@@ -657,21 +668,6 @@ function clearAppState() {
             layerPanel.classList.remove('collapsed');
         }
     }
-}
-
-function addFeatureToMap(feature, layer) {
-    if (layer.visible === false) return; // Don't render invisible layers
-
-    const mapLayer = createMapLayer(feature, layer);
-    if (!mapLayer) return;
-
-    if (feature.geometry_type === 'Point' && state.markerClusterGroup) {
-        state.markerClusterGroup.addLayer(mapLayer);
-    } else {
-        state.drawnItems.addLayer(mapLayer);
-    }
-
-    state.allFeatures.push({ feature, mapLayer, layerId: layer.id });
 }
 
 // ========================================
@@ -787,29 +783,32 @@ function handlePhotoChange() {
 // Draw Event Handlers
 // ========================================
 function handleDrawCreated(e) {
-    const type = e.layerType;
-    const layer = e.layer;
+    // MapboxDraw fires draw.create with { features: [...] }
+    const drawnFeatures = e.features;
+    if (!drawnFeatures || drawnFeatures.length === 0) return;
 
-    if (state.currentLayer) state.map.removeLayer(state.currentLayer);
-    state.currentLayer = layer;
-    state.drawnItems.addLayer(state.currentLayer);
+    const drawn = drawnFeatures[0];
+    const geomType = drawn.geometry.type; // 'Point', 'LineString', 'Polygon'
+
+    // Store the draw ID so we can delete it later
+    state.currentDrawId = drawn.id;
 
     closeAllPanels();
 
     if (!state.activeLayerId || state.layers.length === 0) {
         showToast('Please create a layer first before adding features', 'warning');
-        state.map.removeLayer(state.currentLayer);
-        state.currentLayer = null;
+        state.drawControl.delete(drawn.id);
+        state.currentDrawId = null;
         return;
     }
 
     const activeLayer = state.layers.find(l => l.id === state.activeLayerId);
 
-    if (type === 'marker') {
+    if (geomType === 'Point') {
         state.currentDrawType = 'Point';
-        const latlng = layer.getLatLng();
+        const [lng, lat] = drawn.geometry.coordinates;
         const coordsDisplay = document.getElementById('new-feature-coords');
-        if (coordsDisplay) coordsDisplay.textContent = `${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}`;
+        if (coordsDisplay) coordsDisplay.textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
 
         // Generate form fields from layer schema
         const fieldsContainer = document.getElementById('feature-form-fields');
@@ -817,7 +816,7 @@ function handleDrawCreated(e) {
 
         // Auto-fetch elevation if schema has elevation field
         if (activeLayer?.schema?.find(f => f.key === 'elevation')) {
-            fetchElevation(latlng.lat, latlng.lng).then(elev => {
+            fetchElevation(lat, lng).then(elev => {
                 const elevInput = document.getElementById('field-elevation');
                 if (elevInput) elevInput.value = elev.toFixed(1);
             });
@@ -829,12 +828,12 @@ function handleDrawCreated(e) {
 
         openPanel(featureFormPanel);
 
-    } else if (type === 'polyline') {
+    } else if (geomType === 'LineString') {
         state.currentDrawType = 'LineString';
-        const latlngs = layer.getLatLngs();
+        const lineCoords = drawn.geometry.coordinates; // [[lng, lat], ...]
         let totalDistance = 0;
-        for (let i = 0; i < latlngs.length - 1; i++) {
-            totalDistance += haversineDistance(latlngs[i].lat, latlngs[i].lng, latlngs[i + 1].lat, latlngs[i + 1].lng);
+        for (let i = 0; i < lineCoords.length - 1; i++) {
+            totalDistance += haversineDistance(lineCoords[i][1], lineCoords[i][0], lineCoords[i + 1][1], lineCoords[i + 1][0]);
         }
         const distStr = totalDistance > 1000 ? (totalDistance / 1000).toFixed(2) + ' km' : totalDistance.toFixed(1) + ' m';
 
@@ -843,14 +842,14 @@ function handleDrawCreated(e) {
         generateFormFields(fieldsContainer, activeLayer?.schema || DEFAULT_SCHEMA);
 
         const coordsDisplay = document.getElementById('new-feature-coords');
-        if (coordsDisplay) coordsDisplay.textContent = `📏 ${distStr} (${latlngs.length} points)`;
+        if (coordsDisplay) coordsDisplay.textContent = `📏 ${distStr} (${lineCoords.length} points)`;
 
         const formTitle = document.getElementById('feature-form-title');
         if (formTitle) formTitle.textContent = `📏 New Line`;
 
         openPanel(featureFormPanel);
 
-    } else if (type === 'polygon' || type === 'rectangle') {
+    } else if (geomType === 'Polygon') {
         state.currentDrawType = 'Polygon';
 
         const fieldsContainer = document.getElementById('feature-form-fields');
@@ -867,67 +866,20 @@ function handleDrawCreated(e) {
 }
 
 async function handleDrawEdited(e) {
-    const layers = e.layers;
-    layers.eachLayer(async (layer) => {
-        const dbId = layer.databaseId;
-        if (!dbId) return;
-
-        let coordinates;
-        if (layer.getLatLng) {
-            const ll = layer.getLatLng();
-            coordinates = { lat: ll.lat, lng: ll.lng };
-        } else if (layer.getLatLngs) {
-            const lls = layer.getLatLngs();
-            const flat = Array.isArray(lls[0]) && Array.isArray(lls[0][0]) ? lls[0] : lls;
-            const arr = Array.isArray(flat[0]) ? flat : [flat];
-            coordinates = arr[0].map(ll => ({ lat: ll.lat, lng: ll.lng }));
-        }
-
-        try {
-            await updateFeature(dbId, { coordinates });
-            showToast('Feature location updated!', 'success');
-            haptic();
-        } catch (err) {
-            if (!navigator.onLine) {
-                queueOfflineAction('edit-feature', { id: dbId, coordinates });
-                updateQueueBadge();
-                showToast('Saved edit offline — will sync later', 'warning');
-            } else {
-                showToast('Error updating feature: ' + err.message, 'error');
-            }
-        }
-    });
+    // MapboxDraw fires draw.update — we don't track DB IDs on draw features,
+    // so we just reload after save. This is a no-op for now.
 }
 
 function handleDrawDeleted(e) {
-    const layers = e.layers;
-    layers.eachLayer(async (layer) => {
-        const dbId = layer.databaseId;
-        if (!dbId) return;
-
-        try {
-            await deleteFeatureDB(dbId);
-            state.allFeatures = state.allFeatures.filter(f => f.feature.id !== dbId);
-            updateDashboard();
-            showToast('Feature deleted!', 'success');
-            haptic([10, 50, 10]);
-        } catch (err) {
-            if (!navigator.onLine) {
-                queueOfflineAction('delete-feature', { id: dbId });
-                updateQueueBadge();
-                showToast('Deleted offline — will sync later', 'warning');
-            } else {
-                showToast('Error deleting feature: ' + err.message, 'error');
-            }
-        }
-    });
+    // MapboxDraw fires draw.delete — same as above, a no-op since
+    // we manage deletion through the popup buttons, not the draw trash tool.
 }
 
 // ========================================
 // Save Feature
 // ========================================
 async function saveFeature() {
-    if (!state.currentLayer || !state.currentUser || !state.activeLayerId) return;
+    if (!state.currentDrawId || !state.currentUser || !state.activeLayerId) return;
 
     const activeLayer = state.layers.find(l => l.id === state.activeLayerId);
     const schema = activeLayer?.schema || DEFAULT_SCHEMA;
@@ -940,16 +892,21 @@ async function saveFeature() {
         return;
     }
 
+    // Get drawn feature from MapboxDraw
+    const drawn = state.drawControl.get(state.currentDrawId);
+    if (!drawn) return;
+
     // Get coordinates based on geometry type
     let coordinates;
     if (state.currentDrawType === 'Point') {
-        const latlng = state.currentLayer.getLatLng();
-        coordinates = { lat: latlng.lat, lng: latlng.lng };
+        const [lng, lat] = drawn.geometry.coordinates;
+        coordinates = { lat, lng };
     } else if (state.currentDrawType === 'LineString') {
-        coordinates = state.currentLayer.getLatLngs().map(ll => ({ lat: ll.lat, lng: ll.lng }));
+        coordinates = drawn.geometry.coordinates.map(c => ({ lat: c[1], lng: c[0] }));
     } else if (state.currentDrawType === 'Polygon') {
-        const latlngs = state.currentLayer.getLatLngs()[0];
-        coordinates = latlngs.map(ll => ({ lat: ll.lat, lng: ll.lng }));
+        // Polygon coords: first ring, skip closing duplicate
+        const ring = drawn.geometry.coordinates[0];
+        coordinates = ring.slice(0, -1).map(c => ({ lat: c[1], lng: c[0] }));
     }
 
     // Photo
@@ -972,8 +929,9 @@ async function saveFeature() {
 
     try {
         await insertFeature(featureData);
-        state.map.removeLayer(state.currentLayer);
-        state.currentLayer = null;
+        // Remove drawn shape from MapboxDraw
+        state.drawControl.delete(state.currentDrawId);
+        state.currentDrawId = null;
         closePanel(featureFormPanel);
         showToast('Feature saved!', 'success');
         haptic();
@@ -981,8 +939,8 @@ async function saveFeature() {
     } catch (err) {
         if (!navigator.onLine) {
             queueOfflineAction('feature', featureData);
-            state.map.removeLayer(state.currentLayer);
-            state.currentLayer = null;
+            state.drawControl.delete(state.currentDrawId);
+            state.currentDrawId = null;
             closePanel(featureFormPanel);
             updateQueueBadge();
             showToast('Saved offline — will sync later', 'warning');
@@ -1002,7 +960,8 @@ function openEditForm(featureId) {
     const layer = state.layers.find(l => l.id === feature.layer_id);
 
     state.editingFeatureId = featureId;
-    state.map.closePopup();
+    // Close any open MapLibre popups
+    document.querySelectorAll('.maplibregl-popup').forEach(el => el.remove());
 
     // Generate form fields with current values
     const fieldsContainer = document.getElementById('edit-form-fields');
@@ -1080,16 +1039,12 @@ function confirmDeleteFeature(featureId) {
         async () => {
             try {
                 await deleteFeatureDB(featureId);
-                const item = state.allFeatures.find(f => f.feature.id === featureId);
-                if (item) {
-                    const group = item.feature.geometry_type === 'Point' && state.markerClusterGroup
-                        ? state.markerClusterGroup : state.drawnItems;
-                    group.removeLayer(item.mapLayer);
-                }
+                // Reload map to remove the feature
                 state.allFeatures = state.allFeatures.filter(f => f.feature.id !== featureId);
                 updateDashboard();
                 showToast('Feature deleted!', 'success');
                 haptic([10, 50, 10]);
+                await reloadData();
             } catch (err) {
                 if (!navigator.onLine) {
                     queueOfflineAction('delete-feature', { id: featureId });
@@ -1256,17 +1211,18 @@ function initSearch(map) {
                 div.addEventListener('click', () => {
                     const lat = parseFloat(item.lat);
                     const lon = parseFloat(item.lon);
-                    map.flyTo([lat, lon], 14);
+                    map.flyTo({ center: [lon, lat], zoom: 14, duration: 800 });
 
-                    if (state.searchMarker) map.removeLayer(state.searchMarker);
-                    state.searchMarker = L.circleMarker([lat, lon], {
-                        radius: 10,
-                        fillColor: '#FF6B6B',
-                        fillOpacity: 1,
-                        color: '#fff',
-                        weight: 3
-                    }).addTo(map);
-                    state.searchMarker.bindPopup(`<strong>${sanitize(primaryName)}</strong><br><small>${sanitize(details)}</small>`).openPopup();
+                    if (state.searchMarker) state.searchMarker.remove();
+
+                    // Create a MapLibre marker for the search result
+                    const el = document.createElement('div');
+                    el.style.cssText = 'width:20px;height:20px;background:#FF6B6B;border:3px solid #fff;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.3);';
+                    state.searchMarker = new maplibregl.Marker({ element: el })
+                        .setLngLat([lon, lat])
+                        .setPopup(new maplibregl.Popup({ offset: 14 }).setHTML(`<strong>${sanitize(primaryName)}</strong><br><small>${sanitize(details)}</small>`))
+                        .addTo(map);
+                    state.searchMarker.togglePopup();
                     searchResults.style.display = 'none';
                 });
                 searchResults.appendChild(div);
@@ -1323,7 +1279,7 @@ function initPanelBackdrop() {
 
     backdrop.addEventListener('click', () => {
         if (featureFormPanel?.classList.contains('active')) {
-            if (state.currentLayer) { state.map.removeLayer(state.currentLayer); state.currentLayer = null; }
+            if (state.currentDrawId && state.drawControl) { state.drawControl.delete(state.currentDrawId); state.currentDrawId = null; }
             closePanel(featureFormPanel);
         } else if (editPanel?.classList.contains('active')) {
             state.editingFeatureId = null;
@@ -1437,8 +1393,8 @@ function computeRoute() {
 
     // Use GPS position or map center as start point
     const center = state.map.getCenter();
-    const startPoint = state.gpsMarker
-        ? state.gpsMarker.getLatLng()
+    const startPoint = state.gpsPosition
+        ? state.gpsPosition
         : { lat: center.lat, lng: center.lng };
 
     computedRoute = optimizeSurveyRoute(selected, startPoint);
@@ -1537,7 +1493,7 @@ async function openPriorityTreesPanel() {
 
 async function openGrowthHistory(featureId) {
     state.currentGrowthFeatureId = featureId;
-    state.map.closePopup();
+    // Close any open popup (MapLibre popups auto-close)
     closeAllPanels();
 
     // Get tree info for title

@@ -1,5 +1,5 @@
 // ========================================
-// OpenGIS — Map Module
+// OpenGIS — Map Module (MapLibre GL JS)
 // ========================================
 
 import { state, DEFAULT_CENTER, DEFAULT_ZOOM, LAYER_COLORS, IS_LOW_END } from './config.js';
@@ -9,148 +9,439 @@ import {
     haversineDistance, featureIdToCode
 } from './utils.js';
 
-// --- Map Initialization ---
-export function initMap(elementId) {
-    const map = L.map(elementId, {
-        zoomControl: false,
-        preferCanvas: true, // Canvas rendering — critical for low-end devices
-        maxBoundsViscosity: 1.0,
-    }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+// MapTiler free tier key — for vector tile styles + terrain
+const MAPTILER_KEY = 'get_your_own_OpIi9ZULNHzrESv6T2vL';
 
-    L.control.zoom({ position: 'topright' }).addTo(map);
+// Style URLs
+const STYLES = {
+    streets: `https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_KEY}`,
+    satellite: `https://api.maptiler.com/maps/satellite/style.json?key=${MAPTILER_KEY}`,
+    topo: `https://api.maptiler.com/maps/topo-v2/style.json?key=${MAPTILER_KEY}`,
+    dark: `https://api.maptiler.com/maps/dataviz-dark/style.json?key=${MAPTILER_KEY}`,
+};
+
+// Unique source/layer IDs
+const CLUSTER_SOURCE = 'opengis-cluster-source';
+const CLUSTER_LAYER = 'opengis-clusters';
+const CLUSTER_COUNT_LAYER = 'opengis-cluster-count';
+const UNCLUSTERED_LAYER = 'opengis-unclustered-point';
+const HEATMAP_SOURCE = 'opengis-heatmap-source';
+const HEATMAP_LAYER = 'opengis-heatmap';
+const ROUTE_SOURCE = 'opengis-route-source';
+const ROUTE_LAYER = 'opengis-route-line';
+
+// ========================================
+// Map Initialization
+// ========================================
+export function initMap(elementId) {
+    const map = new maplibregl.Map({
+        container: elementId,
+        style: STYLES.streets,
+        center: [DEFAULT_CENTER[1], DEFAULT_CENTER[0]], // MapLibre uses [lng, lat]
+        zoom: DEFAULT_ZOOM,
+        attributionControl: true,
+        maxPitch: 60,
+    });
+
+    // Navigation controls (zoom + compass)
+    map.addControl(new maplibregl.NavigationControl(), 'top-right');
+
+    // Scale bar
+    map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
+
+    // 3D Terrain (once style loads)
+    map.on('style.load', () => {
+        // Add terrain source if available in style
+        try {
+            if (!map.getSource('terrain')) {
+                map.addSource('terrain', {
+                    type: 'raster-dem',
+                    url: `https://api.maptiler.com/tiles/terrain-rgb/tiles.json?key=${MAPTILER_KEY}`,
+                    tileSize: 256,
+                });
+            }
+            map.setTerrain({ source: 'terrain', exaggeration: 1.3 });
+        } catch (e) {
+            console.warn('Terrain not available for this style:', e);
+        }
+
+        // Re-add custom sources/layers after style change
+        restoreCustomLayers(map);
+    });
 
     state.map = map;
     return map;
 }
 
-// --- Tile Layers ---
+// ========================================
+// Tile Layers / Base Map Switcher
+// ========================================
 export function addTileLayers(map) {
-    const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors',
-        maxZoom: 19
+    // Build custom layer switcher control
+    const switcherDiv = document.createElement('div');
+    switcherDiv.className = 'maplibre-base-switcher';
+    switcherDiv.innerHTML = `
+        <button class="base-switch-btn active" data-style="streets" title="Street Map">🗺️</button>
+        <button class="base-switch-btn" data-style="satellite" title="Satellite">🛰️</button>
+        <button class="base-switch-btn" data-style="topo" title="Topographic">⛰️</button>
+        <button class="base-switch-btn" data-style="dark" title="Dark Mode">🌑</button>
+    `;
+
+    switcherDiv.querySelectorAll('.base-switch-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const styleName = btn.dataset.style;
+            if (!STYLES[styleName]) return;
+
+            // Update active state
+            switcherDiv.querySelectorAll('.base-switch-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            // Store current camera position
+            const center = map.getCenter();
+            const zoom = map.getZoom();
+            const pitch = map.getPitch();
+            const bearing = map.getBearing();
+
+            // Switch style (this fires 'style.load' which restores custom layers)
+            map.setStyle(STYLES[styleName]);
+
+            // Restore camera after style loads
+            map.once('style.load', () => {
+                map.jumpTo({ center, zoom, pitch, bearing });
+            });
+        });
     });
 
-    const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        attribution: '&copy; Esri',
-        maxZoom: 19
-    });
-
-    const dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; CartoDB',
-        maxZoom: 19
-    });
-
-    const topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-        attribution: 'Map data: &copy; OpenStreetMap, SRTM | Style: &copy; OpenTopoMap',
-        maxNativeZoom: 17,
-        maxZoom: 19
-    });
-
-    osm.addTo(map);
-
-    const baseLayers = {
-        '🗺️ Street Map': osm,
-        '🛰️ Satellite': satellite,
-        '⛰️ Topographic': topo,
-        '🌑 Dark Mode': dark
+    // Add as a custom control
+    const switcherControl = {
+        onAdd: () => switcherDiv,
+        onRemove: () => switcherDiv.remove(),
     };
+    map.addControl(switcherControl, 'top-right');
 
-    L.control.layers(baseLayers, null, { position: 'topright' }).addTo(map);
-
-    return { osm, satellite, topo, dark };
+    return switcherDiv;
 }
 
-// --- Draw Controls ---
-export function addDrawControls(map, drawnItems) {
-    const drawControl = new L.Control.Draw({
-        draw: {
-            polygon: {
-                allowIntersection: false,
-                shapeOptions: { color: '#4C9AFF', weight: 2, fillColor: '#4C9AFF', fillOpacity: 0.15 }
-            },
-            polyline: {
-                shapeOptions: { color: '#FFD43B', weight: 3 }
-            },
-            rectangle: {
-                shapeOptions: { color: '#CC5DE8', weight: 2, fillColor: '#CC5DE8', fillOpacity: 0.15 }
-            },
-            circle: false,
-            circlemarker: false,
-            marker: true,
+// ========================================
+// Draw Controls (MapboxDraw)
+// ========================================
+export function addDrawControls(map) {
+    const draw = new MapboxDraw({
+        displayControlsDefault: false,
+        controls: {
+            point: true,
+            line_string: true,
+            polygon: true,
+            trash: true,
         },
-        edit: {
-            featureGroup: drawnItems,
-            remove: true
-        }
+        styles: getDrawStyles(),
     });
-    map.addControl(drawControl);
-    state.drawControl = drawControl;
-    return drawControl;
+
+    map.addControl(draw, 'top-left');
+    state.drawControl = draw;
+    return draw;
 }
 
-// --- GPS Locate Me ---
+function getDrawStyles() {
+    // Custom MapboxDraw styles matching the app theme
+    return [
+        // Active polygon fill
+        {
+            id: 'gl-draw-polygon-fill-active',
+            type: 'fill',
+            filter: ['all', ['==', '$type', 'Polygon'], ['!=', 'mode', 'static']],
+            paint: {
+                'fill-color': '#4C9AFF',
+                'fill-opacity': 0.15,
+            },
+        },
+        // Active polygon outline
+        {
+            id: 'gl-draw-polygon-stroke-active',
+            type: 'line',
+            filter: ['all', ['==', '$type', 'Polygon'], ['!=', 'mode', 'static']],
+            paint: {
+                'line-color': '#4C9AFF',
+                'line-width': 2,
+            },
+        },
+        // Active line
+        {
+            id: 'gl-draw-line-active',
+            type: 'line',
+            filter: ['all', ['==', '$type', 'LineString'], ['!=', 'mode', 'static']],
+            paint: {
+                'line-color': '#FFD43B',
+                'line-width': 3,
+            },
+        },
+        // Active point (vertex)
+        {
+            id: 'gl-draw-point-active',
+            type: 'circle',
+            filter: ['all', ['==', '$type', 'Point'], ['==', 'meta', 'vertex']],
+            paint: {
+                'circle-radius': 5,
+                'circle-color': '#fff',
+                'circle-stroke-color': '#4C9AFF',
+                'circle-stroke-width': 2,
+            },
+        },
+        // Active point (feature, not vertex)
+        {
+            id: 'gl-draw-point-feature-active',
+            type: 'circle',
+            filter: ['all', ['==', '$type', 'Point'], ['==', 'meta', 'feature'], ['!=', 'mode', 'static']],
+            paint: {
+                'circle-radius': 7,
+                'circle-color': '#4C9AFF',
+                'circle-stroke-color': '#fff',
+                'circle-stroke-width': 2,
+            },
+        },
+        // Midpoints
+        {
+            id: 'gl-draw-point-midpoint',
+            type: 'circle',
+            filter: ['all', ['==', '$type', 'Point'], ['==', 'meta', 'midpoint']],
+            paint: {
+                'circle-radius': 3,
+                'circle-color': '#4C9AFF',
+            },
+        },
+    ];
+}
+
+// ========================================
+// GPS Locate Me
+// ========================================
 export function initGPS(map) {
     const btn = document.getElementById('gps-btn');
     if (!btn) return;
 
-    btn.addEventListener('click', () => {
-        btn.classList.add('locating');
-        map.locate({ setView: true, maxZoom: 16, enableHighAccuracy: true });
+    // MapLibre GeolocateControl for the actual geolocation
+    const geolocate = new maplibregl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true },
+        trackUserLocation: false,
+        showAccuracyCircle: true,
+        showUserLocation: true,
     });
 
-    map.on('locationfound', (e) => {
+    // We add the control but hide its default button (we use our own GPS button)
+    map.addControl(geolocate, 'bottom-right');
+
+    // Hide the built-in geolocate button after it's added to DOM
+    map.on('load', () => {
+        const geolocateEl = document.querySelector('.maplibregl-ctrl-geolocate');
+        if (geolocateEl) geolocateEl.style.display = 'none';
+    });
+
+    btn.addEventListener('click', () => {
+        btn.classList.add('locating');
+        geolocate.trigger();
+    });
+
+    geolocate.on('geolocate', (e) => {
         btn.classList.remove('locating');
         btn.classList.add('located');
         setTimeout(() => btn.classList.remove('located'), 3000);
 
-        if (state.gpsCircle) map.removeLayer(state.gpsCircle);
-        if (state.gpsMarker) map.removeLayer(state.gpsMarker);
-
-        state.gpsCircle = L.circle(e.latlng, {
-            radius: e.accuracy / 2,
-            color: '#4C9AFF',
-            fillColor: '#4C9AFF',
-            fillOpacity: 0.1,
-            weight: 1
-        }).addTo(map);
-
-        state.gpsMarker = L.circleMarker(e.latlng, {
-            radius: 8,
-            fillColor: '#4C9AFF',
-            fillOpacity: 1,
-            color: '#fff',
-            weight: 2
-        }).addTo(map);
-
-        state.gpsMarker.bindPopup('<span class="popup-label">📍 Your Location</span>').openPopup();
+        // Store GPS position for route planning
+        state.gpsPosition = { lat: e.coords.latitude, lng: e.coords.longitude };
     });
 
-    map.on('locationerror', () => {
+    geolocate.on('error', () => {
         btn.classList.remove('locating');
     });
+
+    state.geolocateControl = geolocate;
 }
 
-// --- Feature Rendering ---
+// ========================================
+// Feature Rendering
+// ========================================
 
-export function createFeatureMarker(feature, layer) {
+// Track all popup markers and geometry layers for cleanup
+let featureMarkers = [];   // maplibregl.Marker instances for Point features
+let featureLayers = [];     // { sourceId, layerIds } for line/polygon features
+let featureLayerCounter = 0;
+
+export function clearAllFeatures(map) {
+    // Remove markers
+    featureMarkers.forEach(m => m.remove());
+    featureMarkers = [];
+
+    // Remove line/polygon source+layers
+    featureLayers.forEach(({ sourceId, layerIds }) => {
+        layerIds.forEach(id => {
+            if (map.getLayer(id)) map.removeLayer(id);
+        });
+        if (map.getSource(sourceId)) map.removeSource(sourceId);
+    });
+    featureLayers = [];
+
+    // Remove cluster source/layers
+    [CLUSTER_LAYER, CLUSTER_COUNT_LAYER, UNCLUSTERED_LAYER].forEach(id => {
+        if (map.getLayer(id)) map.removeLayer(id);
+    });
+    if (map.getSource(CLUSTER_SOURCE)) map.removeSource(CLUSTER_SOURCE);
+
+    // Remove heatmap
+    if (map.getLayer(HEATMAP_LAYER)) map.removeLayer(HEATMAP_LAYER);
+    if (map.getSource(HEATMAP_SOURCE)) map.removeSource(HEATMAP_SOURCE);
+
+    // Remove route
+    if (map.getLayer(ROUTE_LAYER)) map.removeLayer(ROUTE_LAYER);
+    if (map.getSource(ROUTE_SOURCE)) map.removeSource(ROUTE_SOURCE);
+
+    // Remove route stop markers
+    if (state._routeStopMarkers) {
+        state._routeStopMarkers.forEach(m => m.remove());
+        state._routeStopMarkers = [];
+    }
+
+    featureLayerCounter = 0;
+}
+
+/**
+ * Render all features from all layers onto the map.
+ * Points get individual markers with popups, plus a clustered source for visual clustering.
+ * Lines/polygons get individual GeoJSON sources.
+ */
+export function renderAllFeatures(map, features, layerMap) {
+    // --- Points: collect into cluster GeoJSON ---
+    const pointGeoJSON = {
+        type: 'FeatureCollection',
+        features: [],
+    };
+
+    const renderedItems = []; // { feature, mapLayer/marker, layerId }
+
+    features.forEach(feature => {
+        const layer = layerMap[feature.layer_id];
+        if (!layer || layer.visible === false) return;
+
+        if (feature.geometry_type === 'Point' && feature.coordinates) {
+            // Build a GeoJSON feature for the cluster source
+            const gf = {
+                type: 'Feature',
+                geometry: {
+                    type: 'Point',
+                    coordinates: [feature.coordinates.lng, feature.coordinates.lat],
+                },
+                properties: {
+                    _featureId: feature.id,
+                    _layerId: feature.layer_id,
+                    _color: layer.color || LAYER_COLORS[0],
+                },
+            };
+            pointGeoJSON.features.push(gf);
+
+            // Also create a Marker with a popup (for interaction)
+            const marker = createFeatureMarker(feature, layer);
+            marker.addTo(map);
+            featureMarkers.push(marker);
+            renderedItems.push({ feature, mapLayer: marker, layerId: layer.id });
+
+        } else if (feature.geometry_type === 'LineString' && feature.coordinates) {
+            const { sourceId, layerIds } = createFeaturePolyline(map, feature, layer);
+            featureLayers.push({ sourceId, layerIds });
+            renderedItems.push({ feature, mapLayer: null, layerId: layer.id });
+
+        } else if (feature.geometry_type === 'Polygon' && feature.coordinates) {
+            const { sourceId, layerIds } = createFeaturePolygon(map, feature, layer);
+            featureLayers.push({ sourceId, layerIds });
+            renderedItems.push({ feature, mapLayer: null, layerId: layer.id });
+        }
+    });
+
+    // --- Add clustered source for point count display ---
+    if (pointGeoJSON.features.length > 0 && !map.getSource(CLUSTER_SOURCE)) {
+        map.addSource(CLUSTER_SOURCE, {
+            type: 'geojson',
+            data: pointGeoJSON,
+            cluster: true,
+            clusterMaxZoom: 14,
+            clusterRadius: IS_LOW_END ? 80 : 60,
+        });
+
+        // Cluster circles
+        map.addLayer({
+            id: CLUSTER_LAYER,
+            type: 'circle',
+            source: CLUSTER_SOURCE,
+            filter: ['has', 'point_count'],
+            paint: {
+                'circle-color': [
+                    'step', ['get', 'point_count'],
+                    '#4C9AFF', 10,
+                    '#3b82f6', 50,
+                    '#2563eb',
+                ],
+                'circle-radius': [
+                    'step', ['get', 'point_count'],
+                    18, 10,
+                    22, 50,
+                    26,
+                ],
+                'circle-stroke-width': 2,
+                'circle-stroke-color': '#fff',
+            },
+        });
+
+        // Cluster count labels
+        map.addLayer({
+            id: CLUSTER_COUNT_LAYER,
+            type: 'symbol',
+            source: CLUSTER_SOURCE,
+            filter: ['has', 'point_count'],
+            layout: {
+                'text-field': '{point_count_abbreviated}',
+                'text-size': 12,
+            },
+            paint: {
+                'text-color': '#ffffff',
+            },
+        });
+
+        // Click on cluster -> zoom in
+        map.on('click', CLUSTER_LAYER, (e) => {
+            const clusterFeatures = map.queryRenderedFeatures(e.point, { layers: [CLUSTER_LAYER] });
+            const clusterId = clusterFeatures[0].properties.cluster_id;
+            map.getSource(CLUSTER_SOURCE).getClusterExpansionZoom(clusterId, (err, zoom) => {
+                if (err) return;
+                map.easeTo({ center: clusterFeatures[0].geometry.coordinates, zoom });
+            });
+        });
+
+        map.on('mouseenter', CLUSTER_LAYER, () => { map.getCanvas().style.cursor = 'pointer'; });
+        map.on('mouseleave', CLUSTER_LAYER, () => { map.getCanvas().style.cursor = ''; });
+    }
+
+    return renderedItems;
+}
+
+function createFeatureMarker(feature, layer) {
     const color = layer?.color || LAYER_COLORS[0];
     const icon = layer?.icon || '📍';
     const coords = feature.coordinates;
 
-    const marker = L.circleMarker([coords.lat, coords.lng], {
-        radius: 7,
-        fillColor: color,
-        fillOpacity: 0.85,
-        color: '#fff',
-        weight: 2
-    });
+    // Create a circle marker element
+    const el = document.createElement('div');
+    el.className = 'maplibre-feature-marker';
+    el.style.cssText = `
+        width: 14px; height: 14px;
+        background: ${color};
+        border: 2px solid #fff;
+        border-radius: 50%;
+        cursor: pointer;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    `;
 
-    marker.databaseId = feature.id;
-    marker.layerType = 'feature';
-    marker.featureData = feature;
-    marker.layerData = layer;
+    const marker = new maplibregl.Marker({ element: el })
+        .setLngLat([coords.lng, coords.lat]);
 
-    // Build popup
+    // Build popup content (identical HTML to previous Leaflet version)
     const attrs = feature.attributes || {};
     const displayName = attrs.name || attrs.species || icon + ' Feature';
     const latStr = parseFloat(coords.lat).toFixed(6);
@@ -165,7 +456,6 @@ export function createFeatureMarker(feature, layer) {
             }
         });
     } else {
-        // Display all attributes
         Object.entries(attrs).forEach(([key, val]) => {
             if (val != null && val !== '') {
                 attrHtml += `<span class="popup-label">${sanitize(key)}:</span> ${sanitize(val)}<br/>`;
@@ -187,7 +477,6 @@ export function createFeatureMarker(feature, layer) {
         timeHtml = `<div class="popup-timestamp">🕐 ${date}</div>`;
     }
 
-    // Show "Growth" button only for tree-layer features (by layer name convention)
     const isTreeLayer = layer?.name?.toLowerCase()?.includes('tree');
     const growthBtn = isTreeLayer
         ? `<button class="popup-growth-btn" onclick="window.dispatchEvent(new CustomEvent('show-growth', {detail:${feature.id}}))">📈 Growth</button>`
@@ -214,37 +503,50 @@ export function createFeatureMarker(feature, layer) {
         </div>
     `;
 
-    marker.bindPopup(popupContent, { maxWidth: 280 });
+    const popup = new maplibregl.Popup({ maxWidth: '280px', offset: 12 })
+        .setHTML(popupContent);
+
+    marker.setPopup(popup);
+
+    // Store metadata on marker for lookup
+    marker._featureId = feature.id;
+    marker._layerId = layer?.id;
+
     return marker;
 }
 
-export function createFeaturePolyline(feature, layer) {
+function createFeaturePolyline(map, feature, layer) {
     const color = layer?.color || '#FFD43B';
-    const coords = feature.coordinates.map(c => [c.lat, c.lng]);
+    const coords = feature.coordinates.map(c => [c.lng, c.lat]);
+    const sourceId = `line-src-${feature.id}`;
+    const lineLayerId = `line-layer-${feature.id}`;
 
-    const polyline = L.polyline(coords, {
-        color,
-        weight: 3,
-        opacity: 0.8,
+    map.addSource(sourceId, {
+        type: 'geojson',
+        data: {
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: coords },
+            properties: { _featureId: feature.id },
+        },
     });
 
-    polyline.databaseId = feature.id;
-    polyline.layerType = 'feature';
-    polyline.featureData = feature;
-    polyline.layerData = layer;
+    map.addLayer({
+        id: lineLayerId,
+        type: 'line',
+        source: sourceId,
+        paint: {
+            'line-color': color,
+            'line-width': 3,
+            'line-opacity': 0.8,
+        },
+    });
 
-    // Calc length
-    let totalDist = 0;
-    for (let i = 0; i < feature.coordinates.length - 1; i++) {
-        const c1 = feature.coordinates[i];
-        const c2 = feature.coordinates[i + 1];
-        totalDist += haversineDistance(c1.lat, c1.lng, c2.lat, c2.lng);
-    }
-
+    // Popup on click
+    const totalDist = calcTotalDistance(feature.coordinates);
     const attrs = feature.attributes || {};
     const displayName = attrs.name || '📏 Line';
 
-    polyline.bindPopup(`
+    const popupHTML = `
         <div>
             <div class="popup-header" style="border-left: 3px solid ${color}; padding-left: 8px; margin-bottom: 6px;">
                 <strong>${sanitize(displayName)}</strong><br/>
@@ -256,31 +558,63 @@ export function createFeaturePolyline(feature, layer) {
                 <button class="popup-delete-btn" onclick="window.dispatchEvent(new CustomEvent('delete-feature', {detail:${feature.id}}))">🗑️ Delete</button>
             </div>
         </div>
-    `, { maxWidth: 260 });
+    `;
 
-    return polyline;
-}
-
-export function createFeaturePolygon(feature, layer) {
-    const color = layer?.color || '#4C9AFF';
-    const coords = feature.coordinates.map(c => [c.lat, c.lng]);
-
-    const polygon = L.polygon(coords, {
-        color,
-        weight: 2,
-        fillColor: color,
-        fillOpacity: 0.15,
-        dashArray: '6, 4'
+    map.on('click', lineLayerId, (e) => {
+        new maplibregl.Popup({ maxWidth: '260px' })
+            .setLngLat(e.lngLat)
+            .setHTML(popupHTML)
+            .addTo(map);
     });
 
-    polygon.databaseId = feature.id;
-    polygon.layerType = 'feature';
-    polygon.featureData = feature;
-    polygon.layerData = layer;
+    map.on('mouseenter', lineLayerId, () => { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', lineLayerId, () => { map.getCanvas().style.cursor = ''; });
 
+    return { sourceId, layerIds: [lineLayerId] };
+}
+
+function createFeaturePolygon(map, feature, layer) {
+    const color = layer?.color || '#4C9AFF';
+    const coords = feature.coordinates.map(c => [c.lng, c.lat]);
+    // Close the ring for GeoJSON
+    const ring = [...coords, coords[0]];
+    const sourceId = `poly-src-${feature.id}`;
+    const fillLayerId = `poly-fill-${feature.id}`;
+    const outlineLayerId = `poly-outline-${feature.id}`;
+
+    map.addSource(sourceId, {
+        type: 'geojson',
+        data: {
+            type: 'Feature',
+            geometry: { type: 'Polygon', coordinates: [ring] },
+            properties: { _featureId: feature.id },
+        },
+    });
+
+    map.addLayer({
+        id: fillLayerId,
+        type: 'fill',
+        source: sourceId,
+        paint: {
+            'fill-color': color,
+            'fill-opacity': 0.15,
+        },
+    });
+
+    map.addLayer({
+        id: outlineLayerId,
+        type: 'line',
+        source: sourceId,
+        paint: {
+            'line-color': color,
+            'line-width': 2,
+            'line-dasharray': [3, 2],
+        },
+    });
+
+    // Popup on click
     const area = calculatePolygonArea(feature.coordinates);
     const perimeter = calculatePolygonPerimeter(feature.coordinates);
-
     const attrs = feature.attributes || {};
     const displayName = attrs.name || '📐 Area';
 
@@ -292,7 +626,7 @@ export function createFeaturePolygon(feature, layer) {
         timeHtml = `<div class="popup-timestamp">🕐 ${date}</div>`;
     }
 
-    polygon.bindPopup(`
+    const popupHTML = `
         <div>
             <div class="popup-header" style="border-left: 3px solid ${color}; padding-left: 8px; margin-bottom: 6px;">
                 <strong>${sanitize(displayName)}</strong><br/>
@@ -308,124 +642,141 @@ export function createFeaturePolygon(feature, layer) {
                 <button class="popup-delete-btn" onclick="window.dispatchEvent(new CustomEvent('delete-feature', {detail:${feature.id}}))">🗑️ Delete</button>
             </div>
         </div>
-    `, { maxWidth: 260 });
+    `;
 
-    return polygon;
-}
-
-// --- Marker Clustering ---
-export function createClusterGroup() {
-    if (typeof L.markerClusterGroup !== 'function') {
-        console.warn('MarkerCluster plugin not loaded');
-        return null;
-    }
-
-    const group = L.markerClusterGroup({
-        chunkedLoading: true,
-        maxClusterRadius: IS_LOW_END ? 80 : 60, // Larger radius on low-end = fewer clusters to render
-        spiderfyOnMaxZoom: true,
-        showCoverageOnHover: false,
-        animate: !IS_LOW_END, // Disable animation on low-end devices
-        iconCreateFunction: (cluster) => {
-            const count = cluster.getChildCount();
-            let size = 'small';
-            if (count > 50) size = 'large';
-            else if (count > 10) size = 'medium';
-
-            return L.divIcon({
-                html: `<div>${count}</div>`,
-                className: `marker-cluster marker-cluster-${size}`,
-                iconSize: L.point(40, 40)
-            });
-        }
+    map.on('click', fillLayerId, (e) => {
+        new maplibregl.Popup({ maxWidth: '260px' })
+            .setLngLat(e.lngLat)
+            .setHTML(popupHTML)
+            .addTo(map);
     });
 
-    return group;
+    map.on('mouseenter', fillLayerId, () => { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', fillLayerId, () => { map.getCanvas().style.cursor = ''; });
+
+    return { sourceId, layerIds: [fillLayerId, outlineLayerId] };
 }
 
-// --- Heatmap ---
+function calcTotalDistance(coordinates) {
+    let total = 0;
+    for (let i = 0; i < coordinates.length - 1; i++) {
+        const c1 = coordinates[i];
+        const c2 = coordinates[i + 1];
+        total += haversineDistance(c1.lat, c1.lng, c2.lat, c2.lng);
+    }
+    return total;
+}
+
+// ========================================
+// Heatmap (Native MapLibre)
+// ========================================
 export function initHeatmap(map) {
-    if (typeof L.heatLayer !== 'function') {
-        console.warn('Leaflet.heat plugin not loaded');
-        return null;
-    }
-
-    const layer = L.heatLayer([], {
-        radius: 25,
-        blur: 15,
-        maxZoom: 15,
-        gradient: { 0.2: '#4C9AFF', 0.4: '#51CF66', 0.6: '#FFD43B', 0.8: '#FF922B', 1.0: '#FF6B6B' }
-    });
-
-    return layer;
+    // Source created lazily in updateHeatmap
+    return true; // just return truthy so the toggle logic works
 }
 
-export function updateHeatmap(heatLayer, features) {
-    if (!heatLayer) return;
+export function updateHeatmap(map, features) {
     const points = features
         .filter(f => f.geometry_type === 'Point' && f.coordinates)
-        .map(f => [f.coordinates.lat, f.coordinates.lng, 1]);
-    heatLayer.setLatLngs(points);
-}
+        .map(f => ({
+            type: 'Feature',
+            geometry: {
+                type: 'Point',
+                coordinates: [f.coordinates.lng, f.coordinates.lat],
+            },
+            properties: {},
+        }));
 
-export function toggleHeatmap(map, heatLayer, show) {
-    if (!heatLayer) return;
-    if (show) {
-        heatLayer.addTo(map);
+    const geojson = { type: 'FeatureCollection', features: points };
+
+    if (map.getSource(HEATMAP_SOURCE)) {
+        map.getSource(HEATMAP_SOURCE).setData(geojson);
     } else {
-        map.removeLayer(heatLayer);
+        map.addSource(HEATMAP_SOURCE, {
+            type: 'geojson',
+            data: geojson,
+        });
+    }
+
+    // Add the heatmap layer if it doesn't exist (hidden initially)
+    if (!map.getLayer(HEATMAP_LAYER)) {
+        map.addLayer({
+            id: HEATMAP_LAYER,
+            type: 'heatmap',
+            source: HEATMAP_SOURCE,
+            paint: {
+                'heatmap-radius': 25,
+                'heatmap-opacity': 0.7,
+                'heatmap-color': [
+                    'interpolate', ['linear'], ['heatmap-density'],
+                    0, 'rgba(0,0,0,0)',
+                    0.2, '#4C9AFF',
+                    0.4, '#51CF66',
+                    0.6, '#FFD43B',
+                    0.8, '#FF922B',
+                    1.0, '#FF6B6B',
+                ],
+                'heatmap-intensity': 1,
+            },
+            layout: {
+                visibility: 'none', // hidden by default
+            },
+        });
     }
 }
 
-// --- Create a Leaflet layer for a feature based on geometry type ---
-export function createMapLayer(feature, layer) {
-    if (feature.geometry_type === 'Point') {
-        return createFeatureMarker(feature, layer);
-    } else if (feature.geometry_type === 'LineString') {
-        return createFeaturePolyline(feature, layer);
-    } else if (feature.geometry_type === 'Polygon') {
-        return createFeaturePolygon(feature, layer);
-    }
-    return null;
+export function toggleHeatmap(map, heatmapEnabled, show) {
+    if (!map.getLayer(HEATMAP_LAYER)) return;
+    map.setLayoutProperty(HEATMAP_LAYER, 'visibility', show ? 'visible' : 'none');
 }
-
 
 // ========================================
 // Survey Route Drawing
 // ========================================
-
-/**
- * Draw an animated dashed polyline connecting the ordered plots.
- * @param {L.Map} map
- * @param {Array<{lat, lng, name, distFromPrev?}>} orderedPlots
- * @returns {L.LayerGroup} The route layer group (polyline + numbered markers)
- */
 export function drawSurveyRoute(map, orderedPlots) {
     if (!orderedPlots || orderedPlots.length === 0) return null;
 
-    const group = L.layerGroup();
-    const latlngs = orderedPlots.map(p => [p.lat, p.lng]);
+    const coords = orderedPlots.map(p => [p.lng, p.lat]);
 
-    // Animated dashed polyline
-    const polyline = L.polyline(latlngs, {
-        color: '#FF922B',
-        weight: 3,
-        opacity: 0.85,
-        dashArray: '10, 8',
-        className: 'survey-route-line', // For CSS animation
-    });
-    group.addLayer(polyline);
-
-    // Numbered stop markers
-    orderedPlots.forEach((plot, idx) => {
-        const marker = L.marker([plot.lat, plot.lng], {
-            icon: L.divIcon({
-                className: 'survey-route-marker',
-                html: `<div class="route-stop-number">${idx + 1}</div>`,
-                iconSize: [28, 28],
-                iconAnchor: [14, 14],
-            }),
+    // Add route line
+    if (map.getSource(ROUTE_SOURCE)) {
+        map.getSource(ROUTE_SOURCE).setData({
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: coords },
         });
+    } else {
+        map.addSource(ROUTE_SOURCE, {
+            type: 'geojson',
+            data: {
+                type: 'Feature',
+                geometry: { type: 'LineString', coordinates: coords },
+            },
+        });
+    }
+
+    if (!map.getLayer(ROUTE_LAYER)) {
+        map.addLayer({
+            id: ROUTE_LAYER,
+            type: 'line',
+            source: ROUTE_SOURCE,
+            paint: {
+                'line-color': '#FF922B',
+                'line-width': 3,
+                'line-opacity': 0.85,
+                'line-dasharray': [2, 1.5],
+            },
+        });
+    }
+
+    // Add numbered stop markers
+    const stopMarkers = [];
+    orderedPlots.forEach((plot, idx) => {
+        const el = document.createElement('div');
+        el.className = 'route-stop-number';
+        el.textContent = idx + 1;
+
+        const marker = new maplibregl.Marker({ element: el })
+            .setLngLat([plot.lng, plot.lat]);
 
         const distStr = plot.distFromPrev
             ? (plot.distFromPrev > 1000
@@ -433,52 +784,88 @@ export function drawSurveyRoute(map, orderedPlots) {
                 : Math.round(plot.distFromPrev) + ' m')
             : '';
 
-        marker.bindPopup(`
-            <strong>Stop ${idx + 1}: ${sanitize(plot.name || 'Plot')}</strong>
-            ${distStr ? `<br/><small>📏 ${distStr} from previous</small>` : ''}
-        `);
+        const popup = new maplibregl.Popup({ offset: 18 })
+            .setHTML(`
+                <strong>Stop ${idx + 1}: ${sanitize(plot.name || 'Plot')}</strong>
+                ${distStr ? `<br/><small>📏 ${distStr} from previous</small>` : ''}
+            `);
 
-        group.addLayer(marker);
+        marker.setPopup(popup);
+        marker.addTo(map);
+        stopMarkers.push(marker);
     });
 
-    group.addTo(map);
+    state._routeStopMarkers = stopMarkers;
 
     // Fit map to route bounds
-    if (latlngs.length > 1) {
-        map.fitBounds(L.latLngBounds(latlngs).pad(0.15));
+    if (coords.length > 1) {
+        const bounds = coords.reduce(
+            (b, c) => b.extend(c),
+            new maplibregl.LngLatBounds(coords[0], coords[0])
+        );
+        map.fitBounds(bounds, { padding: 60, duration: 800 });
     }
 
-    return group;
+    return 'route-active'; // return a truthy token for state tracking
 }
 
-/**
- * Remove the survey route layer from the map.
- */
-export function clearSurveyRoute(map, routeLayer) {
-    if (routeLayer) {
-        map.removeLayer(routeLayer);
+export function clearSurveyRoute(map) {
+    if (map.getLayer(ROUTE_LAYER)) map.removeLayer(ROUTE_LAYER);
+    if (map.getSource(ROUTE_SOURCE)) map.removeSource(ROUTE_SOURCE);
+
+    if (state._routeStopMarkers) {
+        state._routeStopMarkers.forEach(m => m.remove());
+        state._routeStopMarkers = [];
     }
 }
 
-/**
- * Fly to a specific tree and briefly pulse-highlight it.
- */
+// ========================================
+// Highlight Tree (Fly-To + Pulse)
+// ========================================
 export function highlightTree(map, feature) {
     if (!feature?.coordinates) return;
     const { lat, lng } = feature.coordinates;
 
-    map.flyTo([lat, lng], 18, { duration: 0.8 });
+    map.flyTo({
+        center: [lng, lat],
+        zoom: 18,
+        duration: 800,
+    });
 
-    // Pulse ring effect
-    const pulse = L.circleMarker([lat, lng], {
-        radius: 18,
-        fillColor: '#FF6B6B',
-        fillOpacity: 0.3,
-        color: '#FF6B6B',
-        weight: 2,
-        className: 'tree-highlight-pulse',
-    }).addTo(map);
+    // Pulse ring effect via a temporary marker
+    const el = document.createElement('div');
+    el.className = 'tree-highlight-pulse-marker';
+    el.style.cssText = `
+        width: 36px; height: 36px;
+        border-radius: 50%;
+        background: rgba(255,107,107,0.3);
+        border: 2px solid #FF6B6B;
+        pointer-events: none;
+        animation: treePulseMarker 0.8s ease-out infinite;
+    `;
 
-    // Remove after animation
-    setTimeout(() => map.removeLayer(pulse), 2500);
+    const pulseMarker = new maplibregl.Marker({ element: el })
+        .setLngLat([lng, lat])
+        .addTo(map);
+
+    setTimeout(() => pulseMarker.remove(), 2500);
+}
+
+// ========================================
+// Restore custom layers after style change
+// ========================================
+function restoreCustomLayers(map) {
+    // After a style change, all custom sources/layers are removed.
+    // We need to re-render features. Signal the app to reload data.
+    if (state.appInitialized && state.activeProject && !state.isLoadingData) {
+        window.dispatchEvent(new CustomEvent('maplibre-style-changed'));
+    }
+}
+
+// ========================================
+// Utility: close all popups (compatibility shim)
+// ========================================
+export function closeAllPopups(map) {
+    // MapLibre popups auto-close when a new one opens via markers.
+    // This is a no-op for compatibility with app.js.
 }

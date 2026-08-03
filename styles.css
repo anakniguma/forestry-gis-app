@@ -1033,18 +1033,31 @@ body {
     z-index: 998; display: none;
 }
 
-/* ==================== MAP POPUPS ==================== */
+/* ==================== MAP POPUPS (MapLibre GL) ==================== */
 
-.leaflet-popup-content-wrapper {
+.maplibregl-popup-content {
     background: var(--bg-card) !important;
     border: 1px solid var(--border-color) !important;
     border-radius: var(--radius) !important;
     color: var(--text-primary) !important;
     box-shadow: var(--shadow-lg) !important;
     font-family: var(--font) !important;
+    font-size: 13px;
+    line-height: 1.6;
+    padding: 12px 14px !important;
 }
-.leaflet-popup-tip { background: var(--bg-card) !important; }
-.leaflet-popup-content { font-size: 13px; line-height: 1.6; margin: 12px 14px !important; }
+.maplibregl-popup-tip {
+    border-top-color: var(--bg-card) !important;
+}
+.maplibregl-popup-close-button {
+    color: var(--text-muted);
+    font-size: 18px;
+    padding: 2px 6px;
+}
+.maplibregl-popup-close-button:hover {
+    color: var(--text-primary);
+    background: transparent;
+}
 
 .popup-label { color: var(--text-muted); font-size: 12px; }
 .popup-coords {
@@ -1090,30 +1103,7 @@ body {
     margin-bottom: 6px;
 }
 
-/* ==================== MARKER CLUSTERS ==================== */
-
-.marker-cluster {
-    background: transparent !important;
-}
-.marker-cluster div {
-    background: var(--accent);
-    color: #fff;
-    border-radius: 50%;
-    font-family: var(--font);
-    font-weight: 700;
-    font-size: 12px;
-    width: 36px; height: 36px;
-    display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 2px 8px rgba(76,154,255,0.4);
-}
-.marker-cluster-medium div {
-    width: 42px; height: 42px; font-size: 13px;
-    background: var(--accent-hover);
-}
-.marker-cluster-large div {
-    width: 48px; height: 48px; font-size: 14px;
-    background: #2563eb;
-}
+/* Clustering is now handled natively by MapLibre GL — no custom CSS needed */
 
 /* ==================== OVERLAYS ==================== */
 
@@ -1258,51 +1248,111 @@ body {
 .install-accept { background: var(--accent); color: #fff; }
 .install-dismiss { background: var(--bg-tertiary); color: var(--text-muted); }
 
-/* ==================== LEAFLET OVERRIDES ==================== */
+/* ==================== MAPLIBRE GL OVERRIDES ==================== */
 
-.leaflet-control-layers {
+/* Navigation control (zoom/compass) */
+.maplibregl-ctrl-group {
     background: var(--bg-card) !important;
     border: 1px solid var(--border-color) !important;
     border-radius: var(--radius) !important;
-    color: var(--text-primary) !important;
     box-shadow: var(--shadow) !important;
 }
-.leaflet-control-layers-list { color: var(--text-secondary); }
-.leaflet-control-layers label { cursor: pointer; }
 
-.leaflet-control-zoom a {
-    background: var(--bg-card) !important;
-    color: var(--text-primary) !important;
-    border-color: var(--border-color) !important;
-    width: 36px !important; height: 36px !important;
-    line-height: 36px !important;
-    font-size: 18px !important;
-}
-.leaflet-control-zoom a:hover {
-    background: var(--bg-hover) !important;
-}
-
-.leaflet-draw-toolbar a {
+.maplibregl-ctrl-group button {
     background-color: var(--bg-card) !important;
     border-color: var(--border-color) !important;
+    width: 36px !important;
+    height: 36px !important;
 }
-.leaflet-draw-toolbar a:hover {
+
+.maplibregl-ctrl-group button:hover {
     background-color: var(--bg-hover) !important;
 }
 
-.leaflet-bar {
-    border: 1px solid var(--border-color) !important;
-    border-radius: var(--radius) !important;
-    box-shadow: var(--shadow) !important;
+.maplibregl-ctrl-group button + button {
+    border-top: 1px solid var(--border-color) !important;
 }
 
-.leaflet-top.leaflet-left {
+.maplibregl-ctrl-group button span {
+    filter: invert(0.8);
+}
+
+/* MapboxDraw toolbar */
+.mapbox-gl-draw_ctrl-draw-btn {
+    background-color: var(--bg-card) !important;
+    border-color: var(--border-color) !important;
+    filter: invert(0.8);
+}
+
+.mapbox-gl-draw_ctrl-draw-btn:hover {
+    background-color: var(--bg-hover) !important;
+}
+
+.mapbox-gl-draw_ctrl-draw-btn.active {
+    background-color: var(--accent) !important;
+}
+
+/* Draw toolbar position (same as old Leaflet draw position) */
+.maplibregl-ctrl-top-left {
     margin-left: 230px;
     margin-top: 50px;
 }
 
-.leaflet-top.leaflet-right {
+.maplibregl-ctrl-top-right {
     margin-top: 50px;
+}
+
+/* Base layer switcher */
+.maplibre-base-switcher {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 4px;
+    box-shadow: var(--shadow);
+}
+
+.base-switch-btn {
+    width: 36px;
+    height: 36px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    font-size: 16px;
+    cursor: pointer;
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.base-switch-btn:hover {
+    background: var(--bg-hover);
+}
+
+.base-switch-btn.active {
+    background: var(--accent-glow);
+    border-color: var(--accent);
+}
+
+/* Scale control */
+.maplibregl-ctrl-scale {
+    background: rgba(15, 23, 42, 0.8) !important;
+    color: var(--text-secondary) !important;
+    border-color: var(--text-muted) !important;
+    font-size: 10px !important;
+    padding: 0 4px !important;
+}
+
+/* Attribution */
+.maplibregl-ctrl-attrib {
+    background: rgba(15, 23, 42, 0.7) !important;
+    font-size: 10px;
+}
+.maplibregl-ctrl-attrib a {
+    color: var(--accent) !important;
 }
 
 .layer-panel-header h3::after {
@@ -1352,12 +1402,12 @@ body {
         margin-left: auto;
     }
 
-    .leaflet-top.leaflet-left {
+    .maplibregl-ctrl-top-left {
         margin-left: 0;
         margin-top: 110px;
     }
 
-    .leaflet-top.leaflet-right {
+    .maplibregl-ctrl-top-right {
         margin-top: 60px;
     }
 
@@ -1753,14 +1803,14 @@ body {
 }
 
 
-/* --- Tree Highlight Pulse --- */
-.tree-highlight-pulse {
-    animation: treePulse 0.8s ease-out infinite;
+/* --- Tree Highlight Pulse (MapLibre marker version) --- */
+.tree-highlight-pulse-marker {
+    animation: treePulseMarker 0.8s ease-out infinite;
 }
 
-@keyframes treePulse {
-    0% { stroke-opacity: 1; fill-opacity: 0.3; }
-    100% { stroke-opacity: 0; fill-opacity: 0; stroke-width: 12px; }
+@keyframes treePulseMarker {
+    0% { opacity: 1; transform: scale(1); }
+    100% { opacity: 0; transform: scale(2.5); }
 }
 
 

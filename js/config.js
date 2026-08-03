@@ -102,31 +102,28 @@ if (IS_LOW_END) {
 
 // Shared Application State
 export const state = {
-    // Map
+    // Map (MapLibre GL JS)
     map: null,
-    drawnItems: null,
-    drawControl: null,
-    currentLayer: null,
-    currentDrawType: null,
-    markerClusterGroup: null,
-    heatLayer: null,
-    searchMarker: null,
-    gpsCircle: null,
-    gpsMarker: null,
+    drawControl: null,           // MapboxDraw instance
+    currentDrawId: null,         // ID of the currently drawn feature in MapboxDraw
+    currentDrawType: null,       // 'Point' | 'LineString' | 'Polygon'
+    heatLayer: null,             // truthy token from initHeatmap()
+    searchMarker: null,          // maplibregl.Marker for search results
+    gpsPosition: null,           // { lat, lng } from GeolocateControl
+    geolocateControl: null,      // maplibregl.GeolocateControl instance
 
     // Auth
     currentUser: null,
-    appInitialized: false,
+    appInitialized: false,       // set after first successful initApp()
 
     // Projects
     projects: [],
     activeProject: null,
 
     // Layers & Features
-    layers: [],          // layer objects from DB
-    activeLayerId: null,  // currently selected layer for adding features
-    layerGroups: {},      // { layerId: L.featureGroup }
-    allFeatures: [],      // { feature, marker/polygon/polyline, layerId }
+    layers: [],                  // layer objects from DB
+    activeLayerId: null,         // currently selected layer for adding features
+    allFeatures: [],             // rendered feature items from renderAllFeatures()
 
     // Dashboard
     chartInstance: null,
@@ -138,7 +135,7 @@ export const state = {
     isLoadingData: false,
 
     // Forestry — Growth Monitoring
-    surveyRouteLayer: null,       // L.polyline drawn on map for planned route
+    surveyRouteLayer: null,       // route token from drawSurveyRoute()
     priorityTrees: [],            // Ranked tree risk objects from rankTreesByRisk()
     speciesMap: null,             // { speciesId: speciesObj } cache
     speciesList: [],              // All species from DB
