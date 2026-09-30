@@ -237,7 +237,7 @@
         <!-- Layer Manager (Left sidebar) -->
         <div id="layer-panel">
             <div class="layer-panel-header">
-                <h3>🗂️ Layers</h3>
+                <button id="layer-panel-toggle" class="layer-panel-toggle" type="button" aria-controls="layer-list" aria-expanded="true">Layers <span class="layer-chevron" aria-hidden="true">⌄</span></button>
                 <button id="add-layer-btn" class="layer-add-btn" type="button" title="Add Layer">+</button>
             </div>
             <div id="layer-list" class="layer-list"></div>
@@ -412,7 +412,7 @@
         </div>
 
         <!-- Dashboard Sidebar -->
-        <button id="dashboard-toggle" title="Dashboard">📊</button>
+        <button id="dashboard-toggle" title="Dashboard" aria-label="Open dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></button>
         <div id="dashboard-panel">
             <div class="dashboard-header">
                 <h2>📊 Dashboard</h2>
@@ -470,22 +470,22 @@
 
         <!-- Floating Action Buttons -->
         <div class="map-fab-group">
-            <button class="map-fab" id="heatmap-toggle" title="Toggle Heatmap">
-                🔥
+            <button class="map-fab" id="heatmap-toggle" title="Toggle Heatmap" aria-label="Toggle heatmap">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22c4.4 0 7-3.1 7-7 0-3-1.5-5.3-4-7-.1 2-1.2 3.2-2 3.5C13 8.6 11.7 5.4 9 3c.2 3-1 4.7-2.6 6.5C5 11 5 13 5 15c0 3.9 2.6 7 7 7Z"/><path d="M12 22c2 0 3-1.4 3-3 0-1.6-1-2.8-3-4-2 1.2-3 2.4-3 4 0 1.6 1 3 3 3Z"/></svg>
                 <span class="fab-tooltip">Heatmap</span>
             </button>
-            <button class="map-fab forestry-fab" id="survey-route-toggle" title="Plan Survey Route">
-                🛣️
+            <button class="map-fab forestry-fab" id="survey-route-toggle" title="Plan Survey Route" aria-label="Plan survey route">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h5a4 4 0 0 0 0-8h-2a4 4 0 0 1 0-8h5"/></svg>
                 <span class="fab-tooltip">Survey Route</span>
             </button>
-            <button class="map-fab forestry-fab" id="priority-trees-toggle" title="Priority Trees">
-                ⚠️
+            <button class="map-fab forestry-fab" id="priority-trees-toggle" title="Priority Trees" aria-label="Show at-risk trees">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 21h20L12 3Z"/><path d="M12 9v5"/><path d="M12 18h.01"/></svg>
                 <span class="fab-tooltip">At-Risk Trees</span>
             </button>
         </div>
 
         <!-- GPS Button -->
-        <button id="gps-btn" title="My Location">📍</button>
+        <button id="gps-btn" title="My Location" aria-label="Find my location"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2"/></svg></button>
 
         <!-- Status Indicators -->
         <div id="status-indicator">

@@ -494,16 +494,14 @@ async function initApp() {
     // Collapsible layer panel on mobile
     const layerPanel = document.getElementById('layer-panel');
     if (layerPanel) {
-        const header = layerPanel.querySelector('.layer-panel-header');
-        if (header) {
-            header.style.cursor = 'pointer';
-            header.addEventListener('click', (e) => {
-                if (e.target.closest('#add-layer-btn')) return;
-                layerPanel.classList.toggle('collapsed');
-            });
-        }
+        const toggle = document.getElementById('layer-panel-toggle');
+        toggle?.addEventListener('click', () => {
+            layerPanel.classList.toggle('collapsed');
+            toggle.setAttribute('aria-expanded', String(!layerPanel.classList.contains('collapsed')));
+        });
         if (window.innerWidth <= 768) {
             layerPanel.classList.add('collapsed');
+            toggle?.setAttribute('aria-expanded', 'false');
         }
     }
 
@@ -1626,4 +1624,3 @@ async function updateForestryDashboard() {
         console.warn('Could not update forestry dashboard:', err);
     }
 }
-

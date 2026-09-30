@@ -1363,6 +1363,53 @@ body {
     display: none;
 }
 
+/* Map workspace refinements */
+.layer-panel-toggle {
+    border: 0;
+    background: transparent;
+    color: var(--text-primary);
+    font: 600 15px var(--font);
+    cursor: pointer;
+    padding: 6px 4px;
+    text-align: left;
+}
+.layer-chevron { display: inline-block; color: var(--text-muted); margin-left: 4px; transition: transform var(--transition); }
+#layer-panel.collapsed { max-height: 52px; }
+#layer-panel.collapsed .layer-list,
+#layer-panel.collapsed .active-layer-indicator { display: none !important; }
+#layer-panel.collapsed .layer-panel-header { border-bottom: none; }
+#layer-panel.collapsed .layer-chevron { transform: rotate(-90deg); }
+.layer-panel-toggle:focus-visible,
+.layer-add-btn:focus-visible,
+.layer-item:focus-visible,
+.map-fab:focus-visible,
+#dashboard-toggle:focus-visible,
+#gps-btn:focus-visible,
+.back-btn:focus-visible,
+#search-btn:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
+}
+.map-fab svg, #dashboard-toggle svg, #gps-btn svg { width: 21px; height: 21px; }
+.map-fab, #dashboard-toggle, #gps-btn { color: var(--text-primary); }
+.map-fab.active-fab { color: #fff; }
+/* Let the globe carry the sign-in illustration without competing effects. */
+#auth-particles-canvas, .auth-fog, .auth-fog-2 { display: none; }
+.auth-sun-glow { animation: none; opacity: 0.55; }
+.layer-item { min-height: 54px; }
+.layer-item.active { background: rgba(76, 154, 255, 0.22); }
+.layer-item.active .layer-name { color: #fff; font-weight: 700; }
+.layer-name, .layer-empty, .search-result-item strong { font-size: 14px; }
+.layer-count, .active-layer-indicator, .search-result-item small { font-size: 12px; }
+.layer-visibility-btn, .layer-delete-btn { width: 32px; height: 32px; min-width: 32px; min-height: 32px; }
+.layer-item:focus-within .layer-delete-btn { opacity: 0.7; }
+.layer-add-btn { width: 34px; height: 34px; }
+#search-input, #search-btn { font-size: 14px; }
+.fab-tooltip, #status-indicator, .queue-badge { font-size: 12px; }
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
 /* ==================== RESPONSIVE ==================== */
 
 @media (max-width: 768px) {
@@ -1372,13 +1419,13 @@ body {
 
     #layer-panel {
         position: absolute;
-        top: 60px; bottom: auto; left: 10px;
-        width: 200px; max-height: 280px;
+        top: auto; bottom: 12px; left: 12px; right: 12px;
+        width: auto; max-height: min(48dvh, 380px);
         transition: max-height 0.3s ease;
     }
 
     #layer-panel.collapsed {
-        max-height: 48px;
+        max-height: 52px;
     }
 
     #layer-panel.collapsed .layer-list,
@@ -1390,13 +1437,8 @@ body {
         border-bottom: none;
     }
 
-    .layer-panel-header h3::after {
-        display: inline-block;
-    }
-
-    #layer-panel.collapsed .layer-panel-header h3::after {
-        transform: rotate(-90deg);
-    }
+    .layer-chevron { display: inline-block; transition: transform var(--transition); }
+    #layer-panel.collapsed .layer-chevron { transform: rotate(-90deg); }
 
     #user-profile-btn {
         margin-left: auto;
@@ -1404,7 +1446,7 @@ body {
 
     .maplibregl-ctrl-top-left {
         margin-left: 0;
-        margin-top: 110px;
+        margin-top: 62px;
     }
 
     .maplibregl-ctrl-top-right {
@@ -1412,6 +1454,13 @@ body {
     }
 
     .project-name-header { max-width: 100px; font-size: 12px; }
+
+    .map-fab-group { left: auto; right: 12px; bottom: 160px; }
+    .fab-tooltip { left: auto; right: 52px; }
+    #dashboard-toggle { left: 12px; bottom: 72px; }
+    #gps-btn { right: 12px; bottom: 72px; }
+    #status-indicator { bottom: 126px; }
+    .queue-badge { bottom: 178px; }
 
     #dashboard-panel { width: 100%; right: -100%; }
 
@@ -1425,10 +1474,12 @@ body {
 }
 
 @media (max-width: 480px) {
-    #search-wrapper { display: none; }
-    .project-name-header { max-width: 120px; }
-
-    #layer-panel { width: 180px; }
+    #search-bar-row { flex-wrap: wrap; }
+    .project-name-header { max-width: calc(100vw - 112px); flex: 1; font-size: 14px; }
+    #search-wrapper { display: flex; order: 2; flex-basis: 100%; }
+    #top-controls-container { padding: 8px 12px; }
+    #search-results { top: 100px; left: 12px; right: 12px; }
+    .maplibregl-ctrl-top-left, .maplibregl-ctrl-top-right { margin-top: 110px; }
 }
 
 /* ==================== FORESTRY — GROWTH MONITORING ==================== */
